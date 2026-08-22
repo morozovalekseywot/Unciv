@@ -51,12 +51,15 @@ class MapSize private constructor(
         val techCostMultiplier: Float = 1f,
         val techCostPerCityModifier: Float = 0.05f,
         val policyCostPerCityModifier: Float = 0.1f,
+        /** Map generation target: how many well-spaced cities each major civ should have room for.
+         *  Used by the Pangaea city-site guarantee (see MapGenerator/MapRegions). */
+        val minCitySitesPerCiv: Int = 3,
     ) {
-        Tiny(10, 23, 15),
-        Small(15, 33, 21),
-        Medium(20, 44, 29, 1.1f),
-        Large(30, 66, 43, 1.2f, 0.0375f,0.075f),
-        Huge(40, 87, 57, 1.3f, 0.025f,0.05f);
+        Tiny(10, 23, 15, minCitySitesPerCiv = 2),
+        Small(15, 33, 21, minCitySitesPerCiv = 2),
+        Medium(20, 44, 29, 1.1f, minCitySitesPerCiv = 3),
+        Large(30, 66, 43, 1.2f, 0.0375f,0.075f, minCitySitesPerCiv = 4),
+        Huge(40, 87, 57, 1.3f, 0.025f,0.05f, minCitySitesPerCiv = 5);
         /* - ours are a little lighter than the original values. For reference those are:
             Civ5Duel(40,24,17),
             Civ5Tiny(56,36,25),

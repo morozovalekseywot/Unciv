@@ -452,6 +452,62 @@ class MapRegions (val ruleset: Ruleset) {
 
 
 
+    /** Checks whether every generated region can host [requiredSitesPerRegion] well-spaced city sites,
+     *  AND that no two civs' capitals (region start positions) - INCLUDING city-states - ended up too close
+     *  to each other. Must be called after resources AND minor civs have been placed (see [RegionCitySiteValidator]).
+     *  @return true if all checks pass - false means the caller should regenerate the map. */
+    fun allRegionsHaveEnoughCitySites(tileMap: TileMap, requiredSitesPerRegion: Int): Boolean =
+        countSatisfiedRegions(tileMap, requiredSitesPerRegion) == regions.size
+
+    /** Like [allRegionsHaveEnoughCitySites] but returns how many major-civ regions actually satisfy every
+     *  constraint (spacing to all other starts + enough well-spaced workable city sites of their own),
+     *  instead of a single pass/fail. Used to pick the "best of the failed attempts" when the Pangaea
+     *  city-site guarantee has to give up after exhausting its retries - see [MapGenerator][com.unciv.logic.map.mapgenerator.MapGenerator]. */
+    fun countSatisfiedRegions(tileMap: TileMap, requiredSitesPerRegion: Int): Int {
+        if (regions.isEmpty()) return 0
+        val constants = ruleset.modOptions.constants
+
+        // All starting positions on the map: major civ capitals (regions) AND minor civs/city-states.
+        // tileMap.startingLocationsByNation already contains every nation placed so far (major + minor).
+        val allStartTiles = tileMap.startingLocationsByNation.values.flatten().toSet()
+        val majorStartTiles = regions.mapNotNull { it.startPosition?.let { pos -> tileMap[pos] } }
+
+        var satisfiedCount = 0
+        for (region in regions) {
+            val ownStart = region.startPosition?.let { tileMap[it] }
+
+            // 1. This civ's capital must not be too close to ANY other start (major or minor/city-state).
+            val tooCloseToOther = ownStart != null && allStartTiles.any {
+                it != ownStart && ownStart.aerialDistanceTo(it) < constants.citySiteMinAerialDistance
+            }
+            if (tooCloseToOther) {
+                Log.debug(Tag("citySiteGuarantee"), "Capital too close to another start: %s", ownStart?.position)
+                continue
+            }
+
+            // 2. This civ's own region must have room for enough well-spaced, workable city sites
+            //    (see RegionCitySiteValidator), none of which may crowd any OTHER start.
+            val foreignStarts = allStartTiles.filter { it != ownStart }
+            val ok = RegionCitySiteValidator.regionHasEnoughCitySites(
+                region = region,
+                tileData = tileData,
+                requiredSites = requiredSitesPerRegion,
+                minWorkableTiles = constants.minWorkableTilesPerCitySite,
+                minAerialDistance = constants.citySiteMinAerialDistance,
+                workRange = constants.cityWorkRange,
+                foreignStartTiles = foreignStarts
+            )
+            if (!ok) {
+                Log.debug(Tag("citySiteGuarantee"), "Region failed city-site check: %s", region)
+                continue
+            }
+            satisfiedCount++
+        }
+        // Suppress unused warning for majorStartTiles kept for potential future diagnostics/logging
+        Log.debug(Tag("citySiteGuarantee"), "%d/%d regions satisfied (%d major starts placed)", satisfiedCount, regions.size, majorStartTiles.size)
+        return satisfiedCount
+    }
+
     fun placeResourcesAndMinorCivs(tileMap: TileMap, minorCivs: List<Civilization>) {
         placeNaturalWonderImpacts(tileMap)
 

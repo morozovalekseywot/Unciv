@@ -53,6 +53,7 @@ class MapParametersTable(
     private lateinit var worldWrapCheckbox: CheckBox
     private lateinit var legendaryStartCheckbox: CheckBox
     private lateinit var strategicBalanceCheckbox: CheckBox
+    private lateinit var dynamicMapSizeCheckbox: CheckBox
     private lateinit var seedTextField: UncivTextField.Numeric
 
     private lateinit var mapShapesOptionsValues: HashSet<String>
@@ -406,6 +407,13 @@ class MapParametersTable(
         add(legendaryStartCheckbox).row()
     }
 
+    private fun Table.addDynamicMapSizeCheckbox() {
+        dynamicMapSizeCheckbox = "Scale map to civ count".toCheckBox(mapParameters.dynamicMapSizeForCivCount) {
+            mapParameters.dynamicMapSizeForCivCount = it
+        }
+        add(dynamicMapSizeCheckbox).row()
+    }
+
     private fun addWrappedCheckBoxes() {
         val worldWrapWarning = "World wrap maps are very memory intensive - creating large world wrap maps on Android can lead to crashes!"
         if (mapGeneratedMainType == MapGeneratedMainType.randomGenerated) {
@@ -413,6 +421,7 @@ class MapParametersTable(
                 it.defaults().pad(5f,0f)
                 it.addStrategicBalanceCheckbox()
                 it.addLegendaryStartCheckbox()
+                it.addDynamicMapSizeCheckbox()
                 it.addNoRuinsCheckbox()
                 it.addNoNaturalWondersCheckbox()
                 it.addWorldWrapCheckbox()
@@ -423,6 +432,7 @@ class MapParametersTable(
                 defaults().left().pad(2.5f)
                 addStrategicBalanceCheckbox()
                 addLegendaryStartCheckbox()
+                addDynamicMapSizeCheckbox()
                 addNoRuinsCheckbox()
                 addNoNaturalWondersCheckbox()
                 addWorldWrapCheckbox()
@@ -489,6 +499,9 @@ class MapParametersTable(
 
         addSlider("Temperature shift", {mapParameters.temperatureShift}, -0.4f, 0.4f, 0.1f)
         { mapParameters.temperatureShift = it }
+
+        addSlider("Humidity shift", {mapParameters.humidityShift}, -0.4f, 0.4f, 0.1f)
+        { mapParameters.humidityShift = it }
 
         if (forMapEditor) {
             addSlider("Resource richness", { mapParameters.resourceRichness }, 0f, 0.5f)

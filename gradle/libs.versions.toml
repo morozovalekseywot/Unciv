@@ -14,6 +14,8 @@ ktor = "3.2.3"
 logback = "1.5.21"
 clikt = "5.0.3"
 
+slf4j = "2.0.17"
+
 purity = "1.7.0"
 detekt = "1.23.8"
 
@@ -66,6 +68,8 @@ ktor-server-websockets = { group = "io.ktor", name = "ktor-server-websockets", v
 
 logback = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 clikt = { group = "com.github.ajalt.clikt", name = "clikt", version.ref = "clikt" }
+
+slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4j" }
 
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 jna-platform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }

@@ -134,7 +134,11 @@ class EspionageOverviewScreen(val civInfo: Civilization, val worldScreen: WorldS
         val actionString = if (spy.action.showTurns)
             "[${spy.action.displayString}] ${spy.turnsRemainingForAction}${Fonts.turn}"
         else spy.action.displayString
-        spySelectionTable.add(actionString.toLabel())
+        // Wrap the tech name in its own square brackets so String.tr() translates it
+        // separately as a placeholder
+        val techBeingStolen = if (spy.action == SpyAction.StealingTech) spy.getTechBeingStolen() else null
+        val actionLabelText = if (techBeingStolen != null) "$actionString ([$techBeingStolen])" else actionString
+        spySelectionTable.add(actionLabelText.toLabel())
         // Move button column
         val moveSpyButton = "Move".toTextButton()
         moveSpyButton.onClick {

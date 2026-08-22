@@ -49,6 +49,39 @@ class ModConstants {
     var minimalCityDistance = 3
     var minimalCityDistanceOnDifferentContinents = 2
 
+    // Pangaea city-site guarantee (see MapRegions/RegionCitySiteValidator).
+    // Only active on Pangaea maps of at least Medium size with a single main continent.
+    // Ensures each major civ's region can fit MapSize.minCitySitesPerCiv well-spaced city sites.
+    // A "city site" is a land tile that is not junk (desert/ice/snow etc without a redeeming resource)
+    // and has at least [minWorkableTilesPerCitySite] usable land tiles in its work range.
+    // Two city sites must be at least [citySiteMinAerialDistance] aerial tiles apart.
+    // If a Pangaea map cannot satisfy this, up to [maxPangaeaCitySiteRetries] full regenerations are attempted.
+    var pangaeaCitySiteGuarantee = true
+    var minWorkableTilesPerCitySite = 7
+    var citySiteMinAerialDistance = 5
+    var maxPangaeaCitySiteRetries = 20
+
+    // "Inland start" bonus (see RegionStartFinder.evaluateTileForStart), active under the same conditions
+    // as the city-site guarantee above. Nudges a civ's capital away from the border with OTHER civs'
+    // regions (land only - sea/ocean tiles never count as a "foreign border", so coastal-biased civs like
+    // England are unaffected), so a region that is a narrow wedge boxed in by neighbors gets its capital
+    // placed towards the middle of the wedge instead of right up against a neighbor, leaving room to expand
+    // inland instead of immediately bumping into someone else's territory.
+    // Bonus added to a tile's start score = (rings away from nearest foreign-region tile) * per-ring value,
+    // capped at pangaeaInlandBonusSearchRadius rings (tiles farther than that get the maximum bonus).
+    var pangaeaInlandBonusPerRing = 3
+    var pangaeaInlandBonusSearchRadius = 10
+
+    // "Scale map to civ count" (MapParameters.dynamicMapSizeForCivCount, a player-facing New Game option).
+    // When enabled, before generating a map we estimate how much land area is needed to fit every major
+    // civ AND every city-state with proper spacing (accounting for the exclusion zones placed around
+    // capitals/city-states during generation, see MapRegions.assignCivToRegion/MinorCivPlacer.placeMinorCiv),
+    // and grow the map's radius if the player's chosen size is too small for the requested civ+city-state
+    // count. The map is only ever grown, never shrunk below what the player selected. Works for any map
+    // type/shape - not specific to Pangaea.
+    var tilesPerMajorCiv = 190
+    var tilesPerCityState = 70
+
     var baseCityBombardRange = 2
     var cityWorkRange = 3
     var cityExpandRange = 5

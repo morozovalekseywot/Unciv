@@ -171,6 +171,10 @@ class WorldScreen(
         // This is the most memory-intensive operation we have currently, most OutOfMemory errors will occur here
         mapHolder.addTiles()
         mapHolder.reloadMaxZoom()
+        // Apply the user's preferred default map zoom (independent of UI Scale) unless we're about
+        // to restore a previously saved zoom/scroll state further below.
+        if (restoreState == null && game.settings.mapZoomDefault != 1f)
+            mapHolder.zoom(game.settings.mapZoomDefault)
 
         // resume music (in case choices from the menu lead to instantiation of a new WorldScreen)
         UncivGame.Current.musicController.resume()

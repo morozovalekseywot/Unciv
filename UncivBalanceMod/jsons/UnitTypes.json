@@ -1,0 +1,23 @@
+[
+    // Nuclear Missile (unitType: Missile) is flagged with "Cannot be
+    // intercepted" at the UNIT TYPE level in G&K - so AA unit strength
+    // bonuses against it are pointless, interception is disallowed
+    // outright regardless of any bonus.
+    //
+    // If you decide to allow intercepting ballistic missiles, there are
+    // 2 approaches:
+    //   1) Remove "Cannot be intercepted" here from the whole Missile
+    //      type - this also affects Guided Missile (becomes interceptable too).
+    //   2) Keep this type as-is and instead create a separate unitType
+    //      (e.g. "Ballistic Missile") only for Nuclear Missile without
+    //      this unique, overriding the unit in Units.json.
+    //
+    // Not changing anything here until a decision is made - see separate
+    // discussion for this item.
+
+    // {
+    //     "name": "Missile",
+    //     "movementType": "Air",
+    //     "uniques": ["Self-destructs when attacking"]
+    // }
+]

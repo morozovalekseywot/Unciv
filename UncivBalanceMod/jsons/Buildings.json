@@ -1,0 +1,99 @@
+[
+    // ==============================================================
+    //  Wonder balance changes
+    // ==============================================================
+    // To override an existing building/wonder in an extension mod,
+    // repeat the exact "name" of the original - Unciv replaces the
+    // whole object (fields are not merged), so carry over every field
+    // from the original that you want to keep.
+
+    // Hubble Space Telescope: 2 free Scientists -> 1
+    {
+        "name": "Hubble Space Telescope",
+        "isWonder": true,
+        "greatPersonPoints": {"Great Scientist": 1},
+        "uniques": [
+            "[1] free [Great Scientist] units appear",
+            "[+25]% Production when constructing [Spaceship part] units [in this city]",
+            "Gain a free [Spaceship Factory] [in this city]"
+        ],
+        "requiredTech": "Satellites"
+    },
+
+    // Porcelain Tower: research agreement bonus 50% -> 30%
+    // requiredTech kept as G&K's original "Architecture" (Vanilla uses
+    // "Education" instead - do not mix up rulesets here).
+    {
+        "name": "Porcelain Tower",
+        "culture": 1,
+        "greatPersonPoints": {"Great Scientist": 2},
+        "isWonder": true,
+        "uniques": ["Free [Great Scientist] appears", "Science gained from research agreements [+30]%"],
+        "requiredTech": "Architecture"
+    },
+
+    // Angkor Wat: this wonder is very expensive and comes late for its
+    // main effect (cheaper border growth) - by the time it's built, most
+    // cities have already bought out their first 3 tiles, so the bonus
+    // only really helps with the 4th+ tile onward. Raising flat culture
+    // makes the wonder a worthwhile investment on its own, on top of
+    // keeping the original border-growth ability.
+    // requiredTech kept as G&K's original "Education" (Vanilla uses
+    // "Theology" instead - do not mix up rulesets here).
+    {
+        "name": "Angkor Wat",
+        "culture": 4,
+        "greatPersonPoints": {"Great Engineer": 1},
+        "isWonder": true,
+        "uniques": ["[-25]% Culture cost of natural border growth [in all cities]","[-25]% Gold cost of acquiring tiles [in all cities]"],
+        "requiredTech": "Education"
+    },
+
+    // Pentagon: this wonder is very late (requires Combined Arms in G&K,
+    // Radar in Vanilla), and a one-time discount on unit upgrades is nearly
+    // useless at that point in the game (only Bombers/infantry are typically
+    // left to upgrade). Adding a permanent military unit maintenance discount
+    // on top of the original upgrade-cost bonus. Kept the G&K requiredTech
+    // (Combined Arms) unchanged - do NOT copy the Vanilla value (Radar) here,
+    // they differ between rulesets.
+    {
+        "name": "Pentagon",
+        "isWonder": true,
+        "culture": 3,
+        "greatPersonPoints": {"Great Engineer": 2},
+        "uniques": [
+            "[-33]% Gold cost of upgrading <for [Military] units>",
+            "[-25]% maintenance costs <for [Military] units>"
+        ],
+        "requiredTech": "Combined Arms"
+    },
+
+    // Kremlin: in current Unciv, its properties actually match the
+    // "Redoubt" from the original Civilization 5, not the Kremlin itself -
+    // a purely defensive bonus is less interesting. Restoring the
+    // original Civ5 Kremlin ability profile here.
+    // requiredTech kept as G&K's original "Metallurgy" (Vanilla uses
+    // "Acoustics" instead - do not mix up rulesets here).
+    {
+        "name": "Kremlin",
+        "cost": 1060,
+        "culture": 1,
+        "isWonder": true,
+        "uniques": [
+            "[+50]% Production when constructing [Armored] units [in this city]",
+            "Free Social Policy"
+        ],
+        "requiredTech": "Metallurgy"
+    },
+
+    // CN Tower: required tech moved earlier - Radio -> Radar.
+    // Cannot go earlier than Radio, since this wonder grants a free
+    // Broadcast Tower, which itself requires Radio (and Museum).
+    {
+        "name": "CN Tower",
+        "isWonder": true,
+        "greatPersonPoints": {"Great Merchant": 1},
+        "uniques": ["[+1] population [in all cities]", "[+1 Happiness] [in all cities]", "Gain a free [Broadcast Tower] [in all cities]"],
+        "requiredTech": "Radar"
+    }
+]

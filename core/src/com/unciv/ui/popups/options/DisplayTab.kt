@@ -31,6 +31,8 @@ internal class DisplayTab(
         addScreenSizeSelectBox()
         addScreenOrientationSelectBox()
         addScreenModeSelectBox()
+        addMapZoomDefaultSlider()
+        addScrollWheelZoomSensitivitySlider()
 
 
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
@@ -99,6 +101,22 @@ internal class DisplayTab(
             settings.save()
             if (GUI.isWorldLoaded())
                 GUI.getMap().mapPanningSpeed = settings.mapPanningSpeed
+        }
+    }
+
+    private fun addMapZoomDefaultSlider() {
+        val getTipText: (Float) -> String = { "%.0f".format(it * 100) + "%" }
+        addSlider("Map zoom", settings::mapZoomDefault, 0.7f, 1.5f, 0.05f, getTipText) {
+            settings.save()
+            if (GUI.isWorldLoaded())
+                GUI.getMap().zoom(settings.mapZoomDefault)
+        }
+    }
+
+    private fun addScrollWheelZoomSensitivitySlider() {
+        val getTipText: (Float) -> String = { "%.0f".format(it * 100) + "%" }
+        addSlider("Mouse wheel/trackpad zoom sensitivity", settings::scrollWheelZoomSensitivity, 0.05f, 0.5f, 0.01f, getTipText) {
+            settings.save()
         }
     }
 

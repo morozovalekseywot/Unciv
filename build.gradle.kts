@@ -120,6 +120,9 @@ project(":desktop") {
 
         // Needed for Windows turn notifiers
         "api"(rootProject.libs.bundles.jna)
+
+        // Suppress SLF4J "No providers found" warning (no-op logging implementation)
+        "runtimeOnly"(rootProject.libs.slf4j.nop)
     }
 }
 

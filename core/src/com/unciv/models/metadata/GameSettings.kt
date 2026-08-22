@@ -40,6 +40,13 @@ class GameSettings {
     var mapAutoScroll = false
     /** How fast the map pans using keyboard or with [mapAutoScroll] and mouse */
     var mapPanningSpeed = 6f
+    /** Default zoom level applied to the map when a game/world screen is freshly opened.
+     *  1 = normal size, values > 1 make tiles appear larger (zoomed in) without affecting UI scale. */
+    var mapZoomDefault = 1f
+    /** How much a single scroll wheel/trackpad "tick" changes the map zoom, as a fraction (e.g. 0.25 = 25% per tick).
+     *  Trackpads send many small ticks per physical gesture, so the effect naturally scales with gesture length -
+     *  no separate "trackpad" setting is needed, this covers both mouse wheel and trackpad two-finger scroll. */
+    var scrollWheelZoomSensitivity = 0.25f
 
     //// Graphics
     var tileSet: String = Constants.defaultTileset

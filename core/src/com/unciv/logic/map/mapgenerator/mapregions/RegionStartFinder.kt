@@ -4,6 +4,8 @@ import com.badlogic.gdx.math.Rectangle
 import com.badlogic.gdx.math.Vector2
 import com.unciv.Constants
 import com.unciv.logic.map.HexCoord
+import com.unciv.logic.map.MapSize
+import com.unciv.logic.map.MapType
 import com.unciv.logic.map.mapgenerator.mapregions.MapRegions.Companion.closeStartPenaltyForRing
 import com.unciv.logic.map.mapgenerator.mapregions.MapRegions.Companion.firstRingFoodScores
 import com.unciv.logic.map.mapgenerator.mapregions.MapRegions.Companion.firstRingProdScores
@@ -52,7 +54,7 @@ object RegionStartFinder {
             if (region.continentID != -1 && region.continentID != tile.getContinent())
                 continue // Wrong continent
             if (tile.isLand && !tile.isImpassible()) {
-                evaluateTileForStart(tile, tileData)
+                evaluateTileForStart(tile, tileData, region)
                 if (tile.isAdjacentToRiver())
                     riverTiles.add(tile)
                 else if (tile.isAdjacentToCoast() || tile.isAdjacentTo(Constants.freshWater))
@@ -86,7 +88,7 @@ object RegionStartFinder {
             if (region.continentID != -1 && region.continentID != tile.getContinent())
                 continue // Wrong continent
             if (tile.isLand && !tile.isImpassible()) {
-                evaluateTileForStart(tile, tileData)
+                evaluateTileForStart(tile, tileData, region)
                 dryTiles.add(tile)
             }
         }
@@ -155,7 +157,7 @@ object RegionStartFinder {
 
     /** Evaluates a tile for starting position, setting isGoodStart and startScore in
      *  MapGenTileData. Assumes that all tiles have corresponding MapGenTileData. */
-    private fun evaluateTileForStart(tile: Tile, tileData: TileDataMap) {
+    private fun evaluateTileForStart(tile: Tile, tileData: TileDataMap, region: Region) {
         val localData = tileData[tile]!!
 
         var totalFood = 0
@@ -219,7 +221,42 @@ object RegionStartFinder {
             localData.isGoodStart = false
             totalScore -= (totalScore * localData.closeStartPenalty) / 100
         }
+
+        // "Inland start" bonus: push the capital away from the land border with OTHER civs' regions,
+        // so a region shaped like a narrow wedge boxed in by neighbors gets its capital placed towards
+        // the middle instead of right up against a neighbor. See ModConstants.pangaeaInlandBonusPerRing.
+        totalScore += getInlandBonus(tile, tileData, region)
+
         localData.startScore = totalScore
+    }
+
+    /** Only active for Pangaea maps of at least Medium size with the city-site guarantee enabled
+     *  (see MapGenerator) - for every other map type/size this always returns 0, so behaviour there
+     *  is entirely unchanged. */
+    private fun isInlandBonusActive(tile: Tile): Boolean {
+        val mapParameters = tile.tileMap.mapParameters
+        val ruleset = tile.tileMap.ruleset ?: return false
+        return mapParameters.type == MapType.pangaea
+            && mapParameters.mapSize.getPredefinedOrNextSmaller().radius >= MapSize.Predefined.Medium.radius
+            && ruleset.modOptions.constants.pangaeaCitySiteGuarantee
+    }
+
+    /** @return a bonus proportional to how many rings away the nearest tile belonging to a DIFFERENT
+     *  region is (sea/ocean/unclaimed tiles never count as "foreign", so coastal-biased civs are unaffected).
+     *  Tiles farther than [ModConstants.pangaeaInlandBonusSearchRadius][com.unciv.models.ModConstants.pangaeaInlandBonusSearchRadius]
+     *  rings from any foreign region tile get the maximum bonus. */
+    private fun getInlandBonus(tile: Tile, tileData: TileDataMap, region: Region): Int {
+        if (!isInlandBonusActive(tile)) return 0
+        val constants = tile.tileMap.ruleset!!.modOptions.constants
+        val searchRadius = constants.pangaeaInlandBonusSearchRadius
+
+        for (ring in 1..searchRadius) {
+            for (outerTile in tile.getTilesAtDistance(ring)) {
+                val outerRegion = tileData[outerTile]?.region ?: continue
+                if (outerRegion !== region) return ring * constants.pangaeaInlandBonusPerRing
+            }
+        }
+        return searchRadius * constants.pangaeaInlandBonusPerRing
     }
 
     private fun setRegionStart(region: Region, position:HexCoord, tileData: TileDataMap) {

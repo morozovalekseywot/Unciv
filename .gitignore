@@ -193,3 +193,5 @@ detekt/reports.html
 /buildSrc/.kotlin/errors/*
 /buildSrc/.kotlin/sessions/*
 /.claude/
+/.agents/
+AGENTS.md

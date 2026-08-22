@@ -209,13 +209,21 @@ class Spy private constructor() : IsPartOfGameInfoSerialization {
      * With the range of this function being hardcoded to 30..90 (and 0 for no defensive spy present), ranks cannot guarantee either best or worst outcome.
      * Or - chance range of best result is 0% (rank 1 vs rank 3 defender) to 30% (rank 3 vs no defender), range of worst is 53% to 3%, respectively.
      */
+    /** @return The technology that will be stolen if a theft is currently in progress or completes now -
+     *  deterministically the most expensive of the currently stealable technologies, so this stays
+     *  consistent between what is shown to the player while stealing and what actually gets stolen.
+     */
+    @Readonly
+    fun getTechBeingStolen(): String? =
+        espionageManager.getTechsToSteal(getCity().civ)
+            .maxByOrNull { civInfo.gameInfo.ruleset.technologies[it]!!.cost }
+
     private fun stealTech() {
         val city = getCity()
         val otherCiv = city.civ
         val randomSeed = randomSeed()
 
-        val stolenTech = espionageManager.getTechsToSteal(getCity().civ)
-            .randomOrNull(Random(randomSeed)) // Could be improved to for example steal the most expensive tech or the tech that has the least progress as of yet
+        val stolenTech = getTechBeingStolen()
 
         // Lower is better
         var spyResult = Random(randomSeed).nextInt(300)

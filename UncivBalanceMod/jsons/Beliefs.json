@@ -1,0 +1,17 @@
+[
+    {
+        "name": "Earth Mother",
+        "type": "Pantheon",
+        "uniques": ["[+1 Faith] from every [Copper]", "[+1 Faith] from every [Iron]", "[+1 Faith] from every [Salt]"]
+    },
+    {
+        "name": "Sea Expanse",
+        "type": "Pantheon",
+        "uniques": ["[+1 Faith] from every [Coast]", "[+1 Faith] from every [Ocean]"]
+    },
+    {
+        "name": "Blessing of the Waves",
+        "type": "Pantheon",
+        "uniques": ["[+2 Faith] from every [Fish]", "[+2 Faith] from every [Whales]", "[+2 Faith] from every [Pearls]"]
+    }
+]

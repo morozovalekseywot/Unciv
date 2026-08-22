@@ -1,0 +1,48 @@
+{
+    "isBaseRuleset": false,
+
+    // This is an "extension mod": it does not replace the base ruleset
+    // (Vanilla/G&K), it only patches/extends it. Players need to enable
+    // this mod IN ADDITION to Civ V - Vanilla and/or Civ V - Gods & Kings
+    // when starting a new game.
+
+    "uniques": [],
+
+    "techsToRemove": [],
+    "buildingsToRemove": [],
+    "unitsToRemove": [],
+    "nationsToRemove": [],
+    "policyBranchesToRemove": [],
+    "policiesToRemove": [],
+    // Removing the weakest/least impactful pantheons and follower beliefs:
+    // - Ancestor Worship: effectively just +1 Culture per Shrine, negligible
+    // - Goddess of Protection: bonus only applies when a city attacks,
+    //   which happens rarely if ever during a game - technically not
+    //   useless, but practically dead most of the time
+    // - Monument to the Gods: by the time religion spreads to all cities,
+    //   the Ancient/Classical eras are usually already over
+    // - Religious Settlements: too weak (-15% border growth culture cost)
+    // - Sacred Waters: +1 Happiness, and only in cities on a River tile
+    // - Liturgical Drama: at most +1 Faith from a single building - trivial
+    "beliefsToRemove": [
+        "Ancestor Worship",
+        "Goddess of Protection",
+        "Monument to the Gods",
+        "Religious Settlements",
+        "Sacred Waters",
+        "Liturgical Drama"
+    ],
+    "religionsToRemove": [],
+
+    "constants": {
+        // "Scale map to civ count" tuning (New Game -> Other Settings checkbox).
+        // Estimated land area (in tiles) budgeted per major civ / per city-state when growing the
+        // map radius to fit the requested civ+city-state count.
+        "tilesPerMajorCiv": 190,
+        "tilesPerCityState": 70,
+
+        // Pangaea "city-site guarantee": how many full-map regenerations to attempt before giving up
+        // if the requested civ count doesn't fit with proper spacing on a Pangaea map.
+        "maxPangaeaCitySiteRetries": 20
+    }
+}

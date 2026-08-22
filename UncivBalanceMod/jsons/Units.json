@@ -1,0 +1,134 @@
+[
+    // ==============================================================
+    //  Great Person point pool regrouping
+    // ==============================================================
+    // In G&K, Great Artist/Scientist/Merchant/Engineer all share the
+    // SAME group "Great Person" (only Prophet and General have their
+    // own separate groups). This means getting any one of these 4 types
+    // raises the GPP cost for all the others too - e.g. getting a
+    // Scientist makes the next Merchant more expensive.
+    // Regrouping into 3 pools: Scientist+Engineer share one pool (both
+    // are strong and always desirable), while Merchant and Artist each
+    // get their own separate pool (Merchant is comparatively weak, so
+    // it shouldn't share a pool with anything that would inflate its
+    // cost further).
+
+    {
+        "name": "Great Artist",
+        "unitType": "Civilian",
+        "uniques": [
+            "Empire enters a [8]-turn Golden Age <by consuming this unit>",
+            "Can instantly construct a [Landmark] improvement <by consuming this unit>",
+            "Is part of Great Person group [Artist]",
+            "[This Unit] gets a name from the [Artist] group",
+            "Great Person - [Culture]", "Unbuildable", "Uncapturable"],
+        "movement": 2
+    },
+    {
+        "name": "Great Scientist",
+        "unitType": "Civilian",
+        "uniques": [
+            "Can hurry technology research",
+            "Can instantly construct a [Academy] improvement <by consuming this unit>",
+            "Is part of Great Person group [Scientist-Engineer]",
+            "[This Unit] gets a name from the [Scientist] group",
+            "Great Person - [Science]", "Unbuildable", "Uncapturable"],
+        "movement": 2
+    },
+    {
+        "name": "Great Merchant",
+        "unitType": "Civilian",
+        "uniques": ["Can undertake a trade mission with City-State, giving a large sum of gold and [30] Influence",
+            "Can instantly construct a [Customs house] improvement <by consuming this unit>",
+            "Is part of Great Person group [Merchant]",
+            "[This Unit] gets a name from the [Merchant] group",
+            "Great Person - [Gold]", "Unbuildable", "Uncapturable"],
+        "movement": 2
+    },
+    {
+        "name": "Great Engineer",
+        "unitType": "Civilian",
+        "uniques": ["Can speed up construction of a building",
+            "Can instantly construct a [Manufactory] improvement <by consuming this unit>",
+            "Is part of Great Person group [Scientist-Engineer]",
+            "[This Unit] gets a name from the [Engineer] group",
+            "Great Person - [Production]", "Unbuildable", "Uncapturable"],
+        "movement": 2
+    },
+
+    // ==============================================================
+    //  Unit balance changes
+    // ==============================================================
+    // Anti-Aircraft Gun / Mobile SAM redesign.
+    //
+    // Problem: in the current data these units only have "strength" set
+    // (no "rangedStrength"), which means isRanged() == false for them.
+    // As a result the SAME strength value is used both for melee combat
+    // (they end up as strong as late-game infantry, unlike Artillery
+    // which is deliberately weak in melee) AND for air combat, including
+    // the Air Sweep exchange. This also means enemy fighters can "bait
+    // out" the AA unit's single interception attempt for free via Air
+    // Sweep (0 damage/XP to either side), consuming its only shot for
+    // the turn before a real bomber/nuke attack follows.
+    //
+    // Fix: split the stats like other specialized units do -
+    //   - Low "strength" (Artillery-tier for the era) so infantry can
+    //     actually kill it in melee, same as Artillery.
+    //   - High "rangedStrength" (the old strength value) so
+    //     getDefendingStrength() uses this stronger number specifically
+    //     when the attacker is ranged/air (i.e. Air Sweep or real air
+    //     attacks) - see MapUnitCombatant.getDefendingStrength().
+    //   - "range": 0 - required, otherwise having rangedStrength > 0
+    //     with the default range (2) would give it a genuine ranged
+    //     ground attack, which is not intended.
+    //   - "Cannot attack" - the unit should never initiate an attack
+    //     itself (neither ground nor air), only defend/intercept.
+    //   - interceptRange 2 -> 4, and 2 extra interceptions per turn to
+    //     survive being baited by Air Sweep before a real threat arrives.
+    //
+    // strength/rangedStrength differ between Vanilla (32/40) and G&K
+    // (50/65) - when both mods are active, the G&K version applies.
+    // Below patches the G&K version.
+    {
+        "name": "Anti-Aircraft Gun",
+        "unitType": "Gunpowder",
+        "movement": 2,
+        "interceptRange": 4,
+        "strength": 20,
+        "rangedStrength": 50,
+        "range": 0,
+        "cost": 375,
+        "requiredTech": "Ballistics",
+        "upgradesTo": "Mobile SAM",
+        "obsoleteTech": "Rocketry",
+        "uniques": [
+            "Cannot attack",
+            "[100]% chance to intercept air attacks",
+            "[+150]% Strength <vs [Air] units>",
+            "[+150]% Strength <vs [Helicopter] units>",
+            "[2] extra interceptions may be made per turn",
+            "Never appears as a Barbarian unit"
+        ],
+        "attackSound": "machinegun"
+    },
+    {
+        "name": "Mobile SAM",
+        "unitType": "Gunpowder",
+        "movement": 3,
+        "interceptRange": 4,
+        "strength": 26,
+        "rangedStrength": 65,
+        "range": 0,
+        "cost": 425,
+        "requiredTech": "Rocketry",
+        "uniques": [
+            "Cannot attack",
+            "[100]% chance to intercept air attacks",
+            "[+150]% Strength <vs [Air] units>",
+            "[+150]% Strength <vs [Helicopter] units>",
+            "[2] extra interceptions may be made per turn",
+            "Never appears as a Barbarian unit"
+        ],
+        "attackSound": "missile"
+    }
+]

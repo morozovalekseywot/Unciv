@@ -83,6 +83,11 @@ class MapParameters : IsPartOfGameInfoSerialization {
     var worldWrap = false
     var strategicBalance = false
     var legendaryStart = false
+    // Grows the map radius (never shrinks below the chosen size) so there is enough room for the
+    // requested number of major civs and city-states, accounting for the exclusion zones placed
+    // around their starts during map generation. See MapGenerator.generateMap and
+    // ModConstants.tilesPerMajorCiv/tilesPerCityState.
+    var dynamicMapSizeForCivCount = false
 
     /** This is used mainly for the map editor, so you can continue editing a map under the same ruleset you started with */
     var mods = LinkedHashSet<String>()
@@ -101,8 +106,14 @@ class MapParameters : IsPartOfGameInfoSerialization {
     var resourceRichness = 0.1f
     var waterThreshold = 0.0f
 
-    /** Shifts temperature (after random, latitude and temperatureintensity).*/
-    var temperatureShift = 0f
+    /** Shifts temperature (after random, latitude and temperatureintensity).
+     *  Default is slightly positive (rather than 0) to reduce the amount of Tundra/Snow/Ice generated -
+     *  see the "too many deserts/too much ice" balance discussion. */
+    var temperatureShift = 0.02f
+
+    /** Shifts humidity independently of [temperatureShift] (positive = more humid = fewer deserts).
+     *  Default is slightly positive to reduce the amount of Desert generated, see [temperatureShift]. */
+    var humidityShift = 0.04f
 
     fun clone(): MapParameters {
         val toReturn = MapParameters()
@@ -116,6 +127,7 @@ class MapParameters : IsPartOfGameInfoSerialization {
         toReturn.worldWrap = worldWrap
         toReturn.strategicBalance = strategicBalance
         toReturn.legendaryStart = legendaryStart
+        toReturn.dynamicMapSizeForCivCount = dynamicMapSizeForCivCount
         toReturn.mods = LinkedHashSet(mods)
         toReturn.baseRuleset = baseRuleset
         toReturn.seed = seed
@@ -124,6 +136,7 @@ class MapParameters : IsPartOfGameInfoSerialization {
         toReturn.elevationExponent = elevationExponent
         toReturn.temperatureintensity = temperatureintensity
         toReturn.temperatureShift = temperatureShift
+        toReturn.humidityShift = humidityShift
         toReturn.vegetationRichness = vegetationRichness
         toReturn.rareFeaturesRichness = rareFeaturesRichness
         toReturn.resourceRichness = resourceRichness
@@ -143,7 +156,8 @@ class MapParameters : IsPartOfGameInfoSerialization {
         maxCoastExtension = 2
         elevationExponent = 0.7f
         temperatureintensity = 0.6f
-        temperatureShift = 0.0f
+        temperatureShift = 0.02f
+        humidityShift = 0.04f
         vegetationRichness = 0.4f
         rareFeaturesRichness = 0.05f
         resourceRichness = 0.1f
@@ -189,6 +203,8 @@ class MapParameters : IsPartOfGameInfoSerialization {
         yield("{RNG Seed} $seed")
         yield(", {Map Elevation}=" + elevationExponent.niceToString(2))
         yield(", {Temperature intensity}=" + temperatureintensity.niceToString(2))
+        yield(", {Temperature shift}=" + temperatureShift.niceToString(2))
+        yield(", {Humidity shift}=" + humidityShift.niceToString(2))
         yield(", {Resource richness}=" + resourceRichness.niceToString(3))
         yield(", {Vegetation richness}=" + vegetationRichness.niceToString(2))
         yield(", {Rare features richness}=" + rareFeaturesRichness.niceToString(3))

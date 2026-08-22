@@ -136,7 +136,9 @@ class CityConquestFunctions(val city: City) {
         if (!reconqueredCityWhileStillInResistance && city.foundingCivObject != receivingCiv) {
             // add resistance
             // I checked, and even if you puppet there's resistance for conquering
-            city.setFlag(CityFlags.Resistance, city.population.population)
+            val resistanceTurns = (city.population.population / CityConquestConstants.RESISTANCE_TURNS_POPULATION_DIVISOR)
+                .toInt().coerceAtMost(CityConquestConstants.RESISTANCE_TURNS_MAX)
+            city.setFlag(CityFlags.Resistance, resistanceTurns)
         } else {
             // reconquering or liberating city in resistance so eliminate it
             city.removeFlag(CityFlags.Resistance)

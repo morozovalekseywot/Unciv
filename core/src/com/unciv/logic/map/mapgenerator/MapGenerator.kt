@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
 import kotlin.math.E
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -146,6 +147,65 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             .ifEmpty { sequenceOf(TerrainOccursRange(this)) }
 
     fun generateMap(mapParameters: MapParameters, gameParameters: GameParameters = GameParameters(), gameInfo: GameInfo? = null): TileMap {
+        val civilizations = gameInfo?.civilizations
+        val isMapEditor = civilizations?.isEmpty() ?: true
+
+        // "Scale map to civ count" - player-facing option (MapParameters.dynamicMapSizeForCivCount).
+        // Independent of the Pangaea-specific logic below: works for any map type/shape/size.
+        if (!isMapEditor && mapParameters.dynamicMapSizeForCivCount) {
+            val constants = ruleset.modOptions.constants
+            val majorCivCount = civilizations!!.count { ruleset.nations[it.civName]!!.isMajorCiv }
+            val cityStateCount = civilizations.count { ruleset.nations[it.civName]!!.isCityState }
+            val requiredTiles = majorCivCount * constants.tilesPerMajorCiv + cityStateCount * constants.tilesPerCityState
+            val requiredRadius = ceil(HexMath.getHexagonalRadiusForArea(requiredTiles)).toInt()
+            val currentRadius = mapParameters.mapSize.radius
+            if (requiredRadius > currentRadius) {
+                println("Scale map to civ count: growing map radius from $currentRadius to $requiredRadius " +
+                    "for $majorCivCount civs + $cityStateCount city-states")
+                mapParameters.mapSize = MapSize(requiredRadius)
+            }
+        }
+
+        // The Pangaea city-site guarantee only kicks in for actual games (not the map editor),
+        // on Pangaea maps of at least Medium size, and only when the ruleset opts in.
+        // For every other case we generate exactly once, with no behavioural change whatsoever.
+        val applyCitySiteGuarantee = !isMapEditor
+            && mapParameters.type == MapType.pangaea
+            && mapParameters.mapSize.getPredefinedOrNextSmaller().radius >= MapSize.Predefined.Medium.radius
+            && ruleset.modOptions.constants.pangaeaCitySiteGuarantee
+
+        if (!applyCitySiteGuarantee)
+            return generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = false).first
+
+        val totalMajorCivs = civilizations!!.count { ruleset.nations[it.civName]!!.isMajorCiv }
+        val maxRetries = ruleset.modOptions.constants.maxPangaeaCitySiteRetries.coerceAtLeast(1)
+        var bestMap: TileMap? = null
+        var bestScore = -1
+        for (attempt in 1..maxRetries) {
+            // Use a fresh seed on every retry after the first, so we don't regenerate an identical failing map
+            if (attempt > 1) mapParameters.seed = System.currentTimeMillis() + attempt
+            val (map, satisfiedRegions) = generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = true)
+            // Note: satisfiedRegions is -1 when checkCitySites was false, but we always pass true here
+            if (satisfiedRegions >= totalMajorCivs) {
+                println("Pangaea city-site guarantee: attempt $attempt/$maxRetries succeeded ($satisfiedRegions/$totalMajorCivs civs satisfied)")
+                return map
+            }
+            println("Pangaea city-site guarantee: attempt $attempt/$maxRetries failed ($satisfiedRegions/$totalMajorCivs civs satisfied), regenerating map")
+            if (satisfiedRegions > bestScore) {
+                bestScore = satisfiedRegions
+                bestMap = map
+            }
+        }
+        // Graceful degradation: after exhausting retries, accept the best-scoring map rather than
+        // crash on a possibly-impossible request (bad user input, see AGENTS.md "crash early" nuance).
+        println("Pangaea city-site guarantee: giving up after $maxRetries attempts, using best map found ($bestScore/$totalMajorCivs civs satisfied)")
+        return bestMap!!
+    }
+
+    /** Single map-generation pass.
+     *  @param checkCitySites when true, the returned Int reports how many major-civ regions satisfy the
+     *   city-site guarantee (see [MapRegions.countSatisfiedRegions]). When false it is always -1 (not computed). */
+    private fun generateMapAttempt(mapParameters: MapParameters, gameParameters: GameParameters, gameInfo: GameInfo?, checkCitySites: Boolean): Pair<TileMap, Int> {
         val mapSize = mapParameters.mapSize
         val mapType = mapParameters.type
 
@@ -168,7 +228,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
                 tile.setTerrainTransients()
             }
 
-            return map
+            return Pair(map, -1)
         }
 
         if (consoleTimings) debug("\nMapGenerator run with parameters %s", mapParameters)
@@ -204,6 +264,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         // Region based map generation - not used when generating maps in map editor
         val civilizations = gameInfo?.civilizations
         val isMapEditor = civilizations?.isEmpty() ?: true
+        var satisfiedRegionsCount = -1
         if (! isMapEditor) {
             map.gameInfo = gameInfo
             val regions = MapRegions(ruleset)
@@ -219,6 +280,14 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             }
             runAndMeasure("placeResourcesAndMinorCivs") {
                 regions.placeResourcesAndMinorCivs(map, civilizations.filter { ruleset.nations[it.civName]!!.isCityState })
+            }
+            // Pangaea city-site guarantee: verify AFTER resources AND minor civs are placed (a resource can
+            // redeem an otherwise-bare desert/ice tile, and city-states must be counted for spacing too).
+            // Only computed when the caller asked for it.
+            if (checkCitySites) {
+                runAndMeasure("checkCitySites") {
+                    satisfiedRegionsCount = regions.countSatisfiedRegions(map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv)
+                }
             }
         } else {
             runAndMeasure("NaturalWonderGenerator") {
@@ -236,7 +305,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         for (tile in map.values)
             TileNormalizer.normalizeToRuleset(tile, ruleset)
 
-        return map
+        return Pair(map, satisfiedRegionsCount)
     }
     
     private fun flipTopBottom(vector: HexCoord): HexCoord = HexCoord.of(-vector.y, -vector.x)
@@ -508,6 +577,8 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
      * [MapParameters.tilesPerBiomeArea] to set biomes size
      * [MapParameters.temperatureintensity] to favor very high and very low temperatures
      * [MapParameters.temperatureShift] to shift temperature towards cold (negative) or hot (positive)
+     * [MapParameters.humidityShift] to shift humidity towards dry (negative, more deserts) or wet (positive, fewer deserts),
+     *  independently of [MapParameters.temperatureShift]
      */
     private fun applyHumidityAndTemperature(tileMap: TileMap) {
         val humiditySeed = randomness.RNG.nextInt().toDouble()
@@ -518,7 +589,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         val scale = tileMap.mapParameters.tilesPerBiomeArea.toDouble()
         val temperatureintensity = tileMap.mapParameters.temperatureintensity
         val temperatureShift = tileMap.mapParameters.temperatureShift
-        val humidityShift = if (temperatureShift > 0) -temperatureShift / 2 else 0f
+        val humidityShift = tileMap.mapParameters.humidityShift
 
         // List is OK here as it's only sequentially scanned
         val landTerrains = baseTerrainPicker.filter { it.terrain.type == TerrainType.Land && !it.terrain.impassable && !it.isRough && !it.rareFeature }

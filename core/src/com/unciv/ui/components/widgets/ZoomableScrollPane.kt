@@ -213,8 +213,14 @@ open class ZoomableScrollPane(
             }
 
             if (zoomAction != null) {
-                zoomAction!!.startingZoom = zoomAction!!.currentZoom
-                zoomAction!!.finishingZoom *= zoomMultiplier
+                // Use the actor's real current scale (scaleX), not zoomAction.currentZoom:
+                // currentZoom is only ever assigned inside update(), which runs once per frame
+                // during Actor.act(). A single trackpad gesture can fire several scrolled()
+                // events within the same frame, before act() has run even once - in that case
+                // currentZoom would still be its stale/default value, and restarting the
+                // animation from it caused a visible jump once the action resumed.
+                zoomAction!!.startingZoom = scaleX
+                zoomAction!!.finishingZoom = scaleX * zoomMultiplier
                 zoomAction!!.restart()
             } else {
                 zoomAction = ZoomAction()
@@ -232,8 +238,9 @@ open class ZoomableScrollPane(
             }
 
             if (zoomAction != null) {
-                zoomAction!!.startingZoom = zoomAction!!.currentZoom
-                zoomAction!!.finishingZoom /= zoomMultiplier
+                // See comment in zoomOut() above about why we use scaleX and not currentZoom here.
+                zoomAction!!.startingZoom = scaleX
+                zoomAction!!.finishingZoom = scaleX / zoomMultiplier
                 zoomAction!!.restart()
             } else {
                 zoomAction = ZoomAction()
@@ -262,10 +269,27 @@ open class ZoomableScrollPane(
         }
 
         override fun scrolled(amountX: Float, amountY: Float): Boolean {
-            if (amountX > 0 || amountY > 0)
-                zoomOut()
+            // amountY is the "vertical" scroll delta, which is what both mouse wheels and
+            // trackpad two-finger vertical scroll report. We deliberately ignore amountX
+            // (horizontal scroll) so a horizontal trackpad swipe doesn't also zoom the map.
+            if (amountY == 0f) return true
+
+            // A physical mouse wheel "notch" reports a delta of exactly +-1. Trackpads instead send
+            // a continuous stream of many small fractional deltas per physical gesture (e.g. 0.05, 0.12, ...).
+            // Previously every single one of those tiny events triggered the same fixed +-18% zoom step,
+            // which made trackpad zoom extremely (and cumulatively, since events can overlap the animation)
+            // sensitive. Scaling the zoom step by the actual delta magnitude fixes that: small trackpad
+            // ticks now produce proportionally small zoom changes, while a single mouse wheel notch still
+            // behaves as before.
+            val sensitivity = UncivGame.Current.settings.scrollWheelZoomSensitivity
+            val clampedAmount = amountY.coerceIn(-3f, 3f)
+            val zoomMultiplier = (1f - sensitivity).coerceIn(0.5f, 0.99f)
+                .let { base -> Math.pow(base.toDouble(), kotlin.math.abs(clampedAmount).toDouble()).toFloat() }
+
+            if (clampedAmount > 0)
+                zoomOut(zoomMultiplier)
             else
-                zoomIn()
+                zoomIn(zoomMultiplier)
             return true
         }
     }
