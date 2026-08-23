@@ -179,6 +179,7 @@ enum class UniqueType(
         docDescription = MULTIPLICATIVE_BONUS_EXPLANATION),
     TileCostPercentage("[relativeAmount]% Gold cost of acquiring tiles [cityFilter]", UniqueTarget.FollowerBelief, UniqueTarget.Global,
         docDescription = MULTIPLICATIVE_BONUS_EXPLANATION),
+    CityFoundingExtraTiles("[positiveAmount] additional tiles when founding a city", UniqueTarget.Global),
 
     /// Policy Cost
     LessPolicyCostFromCities("Each city founded increases culture cost of policies [relativeAmount]% less than normal", UniqueTarget.Global),

@@ -57,6 +57,19 @@ android {
         }
     }
 
+    flavorDimensions += "version"
+    productFlavors {
+        create("prod") {
+            dimension = "version"
+            // использует applicationId из defaultConfig
+        }
+        create("dev") {
+            dimension = "version"
+            applicationId = BuildConfig.identifier + ".dev"
+            resValue("string", "app_name", "Unciv Dev")
+        }
+    }
+
     buildTypes {
         debug {
             isDebuggable = true
@@ -66,6 +79,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -83,6 +97,7 @@ android {
     buildFeatures {
         renderScript = true
         aidl = true
+        resValues = true
     }
 }
 

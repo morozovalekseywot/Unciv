@@ -1331,5 +1331,35 @@
       "Autocracy": 7,
       "Order": 7
     }
+  },
+  {
+    "name": "Pocatello",
+    "production": 6,
+    "food": 7,
+    "gold": 5,
+    "science": 5,
+    "culture": 5,
+    "happiness": 6,
+    "faith": 4,
+    "military": 7,
+    "aggressive": 7,
+    "declareWar": 5,
+    "commerce": 5,
+    "diplomacy": 4,
+    "loyal": 6,
+    "expansion": 9,
+    "denounceWillingness": 6,
+    "priorities": {
+      "Tradition": 4,
+      "Liberty": 8,
+      "Honor": 7,
+      "Commerce": 5,
+      "Patronage": 4,
+      "Piety": 4,
+      "Rationalism": 5,
+      "Freedom": 6,
+      "Autocracy": 7,
+      "Order": 6
+    }
   }
 ]

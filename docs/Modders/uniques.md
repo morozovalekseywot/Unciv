@@ -762,6 +762,11 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global, FollowerBelief
 
+??? example  "[positiveAmount] additional tiles when founding a city"
+	Example: "[3] additional tiles when founding a city"
+
+	Applicable to: Global
+
 ??? example  "Each city founded increases culture cost of policies [relativeAmount]% less than normal"
 	Example: "Each city founded increases culture cost of policies [+20]% less than normal"
 

@@ -132,6 +132,19 @@ class CityExpansionManager : IsPartOfGameInfoSerialization {
         for (tile in city.getCenterTile().getTilesInDistance(1)
                 .filter { it.getCity() == null }) // can't take ownership of owned tiles (by other cities)
             takeOwnership(tile)
+
+        // Some civs (e.g. Shoshone) get additional tiles when founding a city,
+        // chosen as the best-ranked tiles in a wider radius
+        val extraTiles = city.civ.getMatchingUniques(UniqueType.CityFoundingExtraTiles)
+            .sumOf { it.params[0].toInt() }
+        if (extraTiles > 0) {
+            val candidateTiles = (city.getCenterTile().getTilesAtDistance(2) +
+                city.getCenterTile().getTilesAtDistance(3))
+                .filter { it.getCity() == null }
+                .sortedBy { Automation.rankTileForExpansion(it, city) }
+            for (tile in candidateTiles.take(extraTiles))
+                takeOwnership(tile)
+        }
     }
 
     private fun addNewTileWithCulture(): HexCoord? {
