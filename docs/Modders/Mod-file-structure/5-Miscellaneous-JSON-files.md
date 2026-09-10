@@ -219,6 +219,8 @@ and city distance in another. In case of conflicts, there is no guarantee which 
 | unitSupplyPerPopulation                  | Float  | 0.5                           | [^C]  |
 | minimalCityDistance                      | Int    | 3                             | [^D]  |
 | minimalCityDistanceOnDifferentContinents | Int    | 2                             | [^D]  |
+| foreignCapitalSettlementProtectionRadius | Int    | 5                             | [^X]  |
+| cityExpansionAnchorMaturityTurns         | Int    | 20                            | [^Y]  |
 | unitUpgradeCost                          | Object | [See below](#unitupgradecost) | [^J]  |
 | naturalWonderCountMultiplier             | Float  | 0.124                         | [^E]  |
 | naturalWonderCountAddedConstant          | Float  | 0.1                           | [^E]  |
@@ -286,6 +288,8 @@ Legend:
 - [^U]: The multiplier of the gold value of a regular trade to be stored as gifts. Set to 0 to disable gold gifting in two-sided trades.
 - [^U]: Modifies how quickly the GaveUsGifts dimplomacy modifier runs out. A higher value makes it run out quicker. Normally the gifts reduced by ~2.5% per turn depending on the diplomatic relations with the default value.
 - [^W]: Number of air units that can be stationed in a city, not including carried/transported air units.
+- [^X]: Aerial distance from a foreign major civilization's original capital in which additional cities cannot be founded while at peace. The capital must still belong to its founder. Set to 0 to disable. Minimum 0, maximum 9.
+- [^Y]: Standard-speed turns before a newly founded non-capital city begins encouraging the AI to settle farther in the same direction. Minimum 0, maximum 1000.
 
 #### UnitUpgradeCost
 

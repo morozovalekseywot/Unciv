@@ -98,6 +98,19 @@ object SpecificUnitAutomation {
         val bestTilesInfo = CityLocationTileRanker.getBestTilesToFoundCity(unit, rangeToSearch, minimumTileValue)
         var bestCityLocation: Tile? = null
 
+        // A valuable site blocked by a foreign capital can make the diplomacy automation prepare
+        // a war. Keep the settler safe until the war begins instead of spending it on a clearly
+        // inferior site or wandering toward the protected capital.
+        if (CityLocationTileRanker.shouldWaitForExpansionWar(unit)) {
+            val closestCity = unit.civ.cities.minByOrNull {
+                it.getCenterTile().aerialDistanceTo(unit.getTile())
+            }
+            if (unit.getTile() in dangerousTiles && closestCity != null
+                && unit.movement.canReach(closestCity.getCenterTile()))
+                unit.movement.headTowards(closestCity.getCenterTile())
+            return
+        }
+
         if (unit.civ.gameInfo.turns == 0 && unit.civ.cities.isEmpty() && bestTilesInfo.tileRankMap.containsKey(unit.getTile())) {   // Special case, we want AI to settle in place on turn 1.
             val foundCityAction = UnitActionsFromUniques.getFoundCityAction(unit, unit.getTile())
             // Depending on era and difficulty we might start with more than one settler. In that case settle the one with the best location

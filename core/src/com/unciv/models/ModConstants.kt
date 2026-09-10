@@ -49,6 +49,16 @@ class ModConstants {
     var minimalCityDistance = 3
     var minimalCityDistanceOnDifferentContinents = 2
 
+    // While at peace, additional cities cannot be founded this close to a foreign major
+    // civilization's original capital, as long as that city still belongs to its founder.
+    // Unlike minimalCityDistance, this is the aerial distance between the city centers.
+    // Set to 0 to disable the protection.
+    var foreignCapitalSettlementProtectionRadius = 5
+
+    // Newly founded non-capital cities do not immediately become anchors which encourage the AI
+    // to settle even farther in the same direction. This value is for Standard speed.
+    var cityExpansionAnchorMaturityTurns = 20
+
     // Pangaea city-site guarantee (see MapRegions/RegionCitySiteValidator).
     // Only active on Pangaea maps of at least Medium size with a single main continent.
     // Ensures each major civ's region can fit MapSize.minCitySitesPerCiv well-spaced city sites.

@@ -54,8 +54,12 @@ object UnitActionsFromUniques {
         if (unit.civ.isOneCityChallenger() && unit.civ.hasEverOwnedOriginalCapital) return null
         val useFrequency = getUseFrequency(unit, unique, 80f)
 
-        if (!unit.hasMovement() || !tile.canBeSettled(unit.civ))
-            return UnitAction(UnitActionType.FoundCity, useFrequency, action = null)
+        if (!unit.hasMovement() || !tile.canBeSettled(unit.civ)) {
+            val title = if (unit.hasMovement() && tile.getForeignCapitalsBlockingSettlement(unit.civ).any())
+                "Cannot found a city this close to another civilization's capital while at peace"
+            else UnitActionType.FoundCity.value
+            return UnitAction(UnitActionType.FoundCity, useFrequency, title = title, action = null)
+        }
 
         val hasActionModifiers = unique.modifiers.any { it.type?.targetTypes?.contains(
             UniqueTarget.UnitActionModifier

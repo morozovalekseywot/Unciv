@@ -4,16 +4,26 @@ import com.unciv.logic.automation.Automation
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.diplomacy.DiplomacyFlags
+import com.unciv.logic.civilization.diplomacy.RelationshipLevel
 import com.unciv.logic.map.HexMath
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.logic.map.tile.Tile
+import com.unciv.models.ruleset.nation.PersonalityValue
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.tile.TileResource
 import com.unciv.models.ruleset.unique.GameContext
 import com.unciv.models.ruleset.unique.UniqueType
+import org.jetbrains.annotations.VisibleForTesting
+import yairm210.purity.annotations.LocalState
+import yairm210.purity.annotations.Mutated
 import yairm210.purity.annotations.Readonly
+import kotlin.math.roundToInt
 
 object CityLocationTileRanker {
+
+    private const val DISTANCE_PENALTY_PER_TILE = 3f
+    private const val EXPANSION_WAR_SEARCH_RANGE = 8
+    private const val COMPARABLE_PEACEFUL_SITE_RATIO = 0.85f
 
     class BestTilesToFoundCity {
         var tileRankMap: HashMap<Tile, Float> = HashMap()
@@ -22,10 +32,9 @@ object CityLocationTileRanker {
     }
 
     /**
-     * Returns a hashmap of tiles to their ranking plus the a the highest value tile and its value
+     * Returns a hashmap of tiles to their rankings, plus the highest-value tile and its value
      */
     fun getBestTilesToFoundCity(unit: MapUnit, distanceToSearch: Int? = null, minimumValue: Float): BestTilesToFoundCity {
-        val distanceModifier = 3f // percentage penalty per aerial distance from unit (Settler)
         val range = if (distanceToSearch != null) distanceToSearch else {
             val distanceFromHome = if (unit.civ.cities.isEmpty()) 0
             else unit.civ.cities.minOf { it.getCenterTile().aerialDistanceTo(unit.getTile()) }
@@ -33,19 +42,19 @@ object CityLocationTileRanker {
         }
         val nearbyCities = unit.civ.gameInfo.getCities()
             .filter { it.getCenterTile().aerialDistanceTo(unit.getTile()) <= 7 + range }
+            .toList()
 
-        val uniques = unit.getMatchingUniques(UniqueType.FoundCity) + unit.getMatchingUniques(UniqueType.FoundPuppetCity)
         val possibleCityLocations = unit.getTile().getTilesInDistance(range)
             // Filter out tiles that we can't actually found on
-            .filter { tile -> uniques.any { it.conditionalsApply(GameContext(unit = unit, tile = tile)) } }
+            .filter { canFoundCityOn(unit, it) }
             .filter { canSettleTile(it, unit.civ, nearbyCities) && (unit.getTile() == it || unit.movement.canMoveTo(it)) }
         val bestTilesToFoundCity = BestTilesToFoundCity()
-        val baseTileMap = HashMap<Tile, Float>()
+        @LocalState val baseTileMap = HashMap<Tile, Float>()
 
         val possibleTileLocationsWithRank = possibleCityLocations
             .map {
                 var tileValue = rankTileToSettle(it, unit.civ, nearbyCities, baseTileMap)
-                val distanceScore = (unit.currentTile.aerialDistanceTo(it) * distanceModifier).coerceIn(0f, 99f)
+                val distanceScore = (unit.currentTile.aerialDistanceTo(it) * DISTANCE_PENALTY_PER_TILE).coerceIn(0f, 99f)
                 tileValue *= (100 - distanceScore) / 100
                 if (tileValue >= minimumValue)
                     bestTilesToFoundCity.tileRankMap[it] = tileValue
@@ -64,15 +73,32 @@ object CityLocationTileRanker {
     }
 
     @Readonly
-    private fun canSettleTile(tile: Tile, civ: Civilization, nearbyCities: Sequence<City>): Boolean {
+    private fun canFoundCityOn(unit: MapUnit, tile: Tile): Boolean {
+        val gameContext = GameContext(unit = unit, tile = tile)
+        var canFoundCity = false
+        unit.forEachMatchingUnique(UniqueType.FoundCity, gameContext) { canFoundCity = true }
+        if (canFoundCity) return true
+        unit.forEachMatchingUnique(UniqueType.FoundPuppetCity, gameContext) { canFoundCity = true }
+        return canFoundCity
+    }
+
+    @Readonly
+    private fun canSettleTile(
+        tile: Tile,
+        civ: Civilization,
+        nearbyCities: Iterable<City>,
+        assumeWarWith: Civilization? = null
+    ): Boolean {
         val modConstants = civ.gameInfo.ruleset.modOptions.constants
         if (!tile.isLand || tile.isImpassible()) return false
         if (tile.getOwner() != null && tile.getOwner() != civ) return false
+        if (tile.getForeignCapitalsBlockingSettlement(civ).any { it.civ != assumeWarWith }) return false
         for (city in nearbyCities) {
             val distance = city.getCenterTile().aerialDistanceTo(tile)
             // todo: AgreedToNotSettleNearUs is hardcoded for now but it may be better to softcode it below in getDistanceToCityModifier
             if (distance <= 6 && civ.knows(city.civ)
                 && !civ.isAtWarWith(city.civ)
+                && city.civ != assumeWarWith
                 // If the CITY OWNER knows that the UNIT OWNER agreed not to settle near them
                 && city.civ.getDiplomacyManager(civ)!!
                     .hasFlag(DiplomacyFlags.AgreedToNotSettleNearUs))
@@ -86,8 +112,107 @@ object CityLocationTileRanker {
         return true
     }
 
-    private fun rankTileToSettle(newCityTile: Tile, civ: Civilization, nearbyCities: Sequence<City>,
-                                 baseTileMap: HashMap<Tile, Float>): Float {
+    /**
+     * Extra motivation to fight [targetCiv] when its capital protection is the only thing keeping
+     * an existing settler away from a substantially better city site.
+     *
+     * This deliberately tops out below the value needed for an expansion-only surprise war. The
+     * normal war evaluation must still find acceptable military strength, attack paths, happiness,
+     * and population before this can lead to preparation or a declaration.
+    */
+    @Readonly
+    @VisibleForTesting
+    fun getExpansionWarMotivation(civ: Civilization, targetCiv: Civilization): Float {
+        val settlers = civ.units.getCivUnits()
+            .filter { it.hasUnique(UniqueType.FoundCity, GameContext.IgnoreConditionals) }
+            .toList()
+        return getExpansionWarMotivation(civ, targetCiv, settlers)
+    }
+
+    @Readonly
+    private fun getExpansionWarMotivation(
+        civ: Civilization,
+        targetCiv: Civilization,
+        settlers: List<MapUnit>
+    ): Float {
+        val modConstants = civ.gameInfo.ruleset.modOptions.constants
+        val protectionRadius = civ.gameInfo.tileMap.getForeignCapitalSettlementProtectionRadius()
+        if (protectionRadius <= 0) return 0f
+        if (!targetCiv.isMajorCiv() || civ.isAtWarWith(targetCiv)) return 0f
+        if (settlers.isEmpty()) return 0f
+
+        val diplomacyManager = civ.getDiplomacyManager(targetCiv) ?: return 0f
+        if (diplomacyManager.isRelationshipLevelGE(RelationshipLevel.Friend)) return 0f
+        if (diplomacyManager.hasFlag(DiplomacyFlags.DeclarationOfFriendship)) return 0f
+        if (diplomacyManager.hasFlag(DiplomacyFlags.DefensivePact)) return 0f
+
+        val targetCapital = targetCiv.cities.firstOrNull {
+            it.isOriginalCapital && it.foundingCivObject == targetCiv
+        } ?: return 0f
+        if (!civ.hasExplored(targetCapital.getCenterTile())) return 0f
+        val maximumRelevantDistance = EXPANSION_WAR_SEARCH_RANGE + protectionRadius
+        if (settlers.none {
+                it.getTile().aerialDistanceTo(targetCapital.getCenterTile()) <= maximumRelevantDistance
+            }) return 0f
+
+        val nearbyCities = civ.gameInfo.getCities().toList()
+        @LocalState val baseTileMap = HashMap<Tile, Float>()
+        val minimumValue = modConstants.minimumCityLocationTileValue
+        var bestMotivation = 0f
+
+        for (settler in settlers) {
+            if (settler.getTile().aerialDistanceTo(targetCapital.getCenterTile()) > maximumRelevantDistance)
+                continue
+
+            var bestPeacefulSite = Float.NEGATIVE_INFINITY
+            var bestBlockedSite = Float.NEGATIVE_INFINITY
+            for (tile in settler.getTile().getTilesInDistance(EXPANSION_WAR_SEARCH_RANGE)) {
+                if (!canFoundCityOn(settler, tile)) continue
+
+                val canSettlePeacefully = canSettleTile(tile, civ, nearbyCities)
+                val blockingCapitals = tile.getForeignCapitalsBlockingSettlement(civ).toList()
+                val blockedOnlyByTarget = blockingCapitals.isNotEmpty()
+                    && blockingCapitals.all { it.civ == targetCiv }
+                    && canSettleTile(tile, civ, nearbyCities, assumeWarWith = targetCiv)
+                if (!canSettlePeacefully && !blockedOnlyByTarget) continue
+
+                var tileValue = rankTileToSettle(tile, civ, nearbyCities, baseTileMap)
+                val distanceScore = (settler.currentTile.aerialDistanceTo(tile) * DISTANCE_PENALTY_PER_TILE).coerceIn(0f, 99f)
+                tileValue *= (100 - distanceScore) / 100
+                if (canSettlePeacefully) bestPeacefulSite = maxOf(bestPeacefulSite, tileValue)
+                if (blockedOnlyByTarget) bestBlockedSite = maxOf(bestBlockedSite, tileValue)
+            }
+
+            if (bestBlockedSite < minimumValue) continue
+            val peacefulComparison = maxOf(bestPeacefulSite, minimumValue, 1f)
+            if (peacefulComparison >= bestBlockedSite * COMPARABLE_PEACEFUL_SITE_RATIO) continue
+
+            val relativeAdvantage = (bestBlockedSite - peacefulComparison) / peacefulComparison
+            val scarcityBonus = if (bestPeacefulSite < minimumValue) 8f
+                else (relativeAdvantage * 20f).coerceAtMost(8f)
+            val qualityBonus = ((bestBlockedSite - minimumValue) / 10f).coerceIn(0f, 5f)
+            val expansionFocus = civ.getPersonality().scaledFocus(PersonalityValue.Expansion)
+            val motivation = ((8f + scarcityBonus + qualityBonus) * expansionFocus).coerceAtMost(25f)
+            bestMotivation = maxOf(bestMotivation, motivation)
+        }
+        return bestMotivation
+    }
+
+    @Readonly
+    @VisibleForTesting
+    fun shouldWaitForExpansionWar(unit: MapUnit): Boolean {
+        for (targetCiv in unit.civ.getKnownCivs()) {
+            val diplomacyManager = unit.civ.getDiplomacyManager(targetCiv) ?: continue
+            if (!diplomacyManager.hasFlag(DiplomacyFlags.WaryOf)) continue
+            if (diplomacyManager.getFlag(DiplomacyFlags.WaryOf) >= 0) continue
+            if (getExpansionWarMotivation(unit.civ, targetCiv, listOf(unit)) > 0f) return true
+        }
+        return false
+    }
+
+    @Readonly
+    private fun rankTileToSettle(newCityTile: Tile, civ: Civilization, nearbyCities: Iterable<City>,
+                                 @Mutated baseTileMap: HashMap<Tile, Float>): Float {
         var tileValue = 0f
         tileValue += getDistanceToCityModifier(newCityTile, nearbyCities, civ)
 
@@ -95,7 +220,7 @@ object CityLocationTileRanker {
         val onHill = newCityTile.isHill()
         val isNextToMountain = newCityTile.isAdjacentTo("Mountain")
         // Only count a luxury resource that we don't have yet as unique once
-        val newUniqueLuxuryResources = HashSet<TileResource>()
+        @LocalState val newUniqueLuxuryResources = HashSet<TileResource>()
 
         if (onCoast) tileValue += 3
         // Hills are free production and defence
@@ -134,7 +259,7 @@ object CityLocationTileRanker {
     }
 
     @Readonly
-    private fun getDistanceToCityModifier(newCityTile: Tile,nearbyCities: Sequence<City>, civ: Civilization): Float {
+    private fun getDistanceToCityModifier(newCityTile: Tile, nearbyCities: Iterable<City>, civ: Civilization): Float {
         var modifier = 0f
         for (city in nearbyCities) {
             val distanceToCity = newCityTile.aerialDistanceTo(city.getCenterTile())
@@ -152,17 +277,44 @@ object CityLocationTileRanker {
                 distanceToCity < 3 -> -30f // Even if it is a mod that lets us settle closer, lets still not do it
                 else -> 0f
             }
-            // We want a defensive ring around our capital
-             if (city.civ == civ) { 
+            // We want a defensive ring around our capital, but a newly planted forward city should
+            // not immediately encourage another city even deeper in the same direction.
+            if (city.civ == civ && isEstablishedExpansionAnchor(city)) {
                 distanceToCityModifier *= if (city.isCapital()) 2 else 1
                 modifier += distanceToCityModifier
+                continue
             }
+
+            if (city.civ == civ || !city.civ.isMajorCiv()) continue
+            if (!city.isOriginalCapital || city.foundingCivObject != city.civ) continue
+            if (civ.isAtWarWith(city.civ)) continue
+
+            val foreignCapitalPenalty = when (distanceToCity) {
+                6 -> -12f
+                else -> 0f
+            }
+            modifier += foreignCapitalPenalty * civ.getPersonality().inverseScaledFocus(PersonalityValue.Expansion)
         }
         return modifier
     }
 
-    private fun rankTile(rankTile: Tile, civ: Civilization, onCoast: Boolean, newUniqueLuxuryResources: HashSet<TileResource>,
-                         baseTileMap: HashMap<Tile, Float>): Float {
+    @Readonly
+    @VisibleForTesting
+    fun isEstablishedExpansionAnchor(city: City): Boolean {
+        if (city.isCapital()) return true
+        val standardSpeedTurns = city.civ.gameInfo.ruleset.modOptions.constants.cityExpansionAnchorMaturityTurns
+        val maturityTurns = (standardSpeedTurns * city.civ.gameInfo.speed.modifier).roundToInt()
+        return city.civ.gameInfo.turns - city.turnAcquired >= maturityTurns
+    }
+
+    @Readonly
+    private fun rankTile(
+        rankTile: Tile,
+        civ: Civilization,
+        onCoast: Boolean,
+        @Mutated newUniqueLuxuryResources: HashSet<TileResource>,
+        @Mutated baseTileMap: HashMap<Tile, Float>
+    ): Float {
         if (rankTile.getCity() != null) return -1f
         var locationSpecificTileValue = 0f
         // Don't settle near but not on the coast

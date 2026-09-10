@@ -128,7 +128,7 @@ object NextTurnAutomation {
             if (demandingCiv.isDefeated()) return
             val diploManager = civInfo.getDiplomacyManager(demandingCiv)!!
             if (Automation.threatAssessment(civInfo, demandingCiv) >= ThreatLevel.High
-                || diploManager.isRelationshipLevelGT(RelationshipLevel.Ally))
+                || diploManager.isRelationshipLevelGE(RelationshipLevel.Friend))
                 diploManager.agreeToDemand(demand)
             else diploManager.refuseDemand(demand)
             return

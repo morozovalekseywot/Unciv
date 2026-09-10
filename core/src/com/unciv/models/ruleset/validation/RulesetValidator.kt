@@ -309,6 +309,8 @@ open class RulesetValidator protected constructor(
         // Crashed with 10 as of writing
         checkConstant(constants::minimalCityDistance, 0..9)
         checkConstant(constants::minimalCityDistanceOnDifferentContinents, 0..9)
+        checkConstant(constants::foreignCapitalSettlementProtectionRadius, 0..9)
+        checkConstant(constants::cityExpansionAnchorMaturityTurns, 0..1000)
         // Game hangs with very high values
         checkConstant(constants::baseCityBombardRange, 0..1000)
 

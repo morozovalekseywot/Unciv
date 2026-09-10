@@ -4,6 +4,7 @@ import com.unciv.Constants
 import com.unciv.logic.automation.Automation
 import com.unciv.logic.automation.ThreatLevel
 import com.unciv.logic.automation.civilization.MotivationToAttackAutomation.hasAtLeastMotivationToAttack
+import com.unciv.logic.automation.unit.CityLocationTileRanker
 import com.unciv.logic.civilization.AlertType
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.PopupAlert
@@ -38,7 +39,6 @@ object DiplomacyAutomation {
             }
             .sortedByDescending { it.getDiplomacyManager(civInfo)!!.relationshipLevel() }.toList()
         for (otherCiv in civsThatWeCanDeclareFriendshipWith) {
-            val rng = civInfo.getDiplomacyManager(otherCiv)!!.state.stateBasedRandom("DiplomacyAutomation.offerDeclarationOfFriendship")
             // Default setting is 2, this will be changed according to different civ.
             if ((1..10).random(getRandom(civInfo, otherCiv, "declaration of friendship"))
                 <= 2 * civInfo.getPersonality().scaledFocus(PersonalityValue.Diplomacy) 
@@ -124,7 +124,7 @@ object DiplomacyAutomation {
     }
 
     /**
-     * Try establishing embassy in other civs' capitals
+     * Try establishing an embassy in the capitals of other civilizations
      * 
      * @param civInfo Civilization which initiates trade
      */
@@ -137,7 +137,6 @@ object DiplomacyAutomation {
         }.sortedByDescending { it.getDiplomacyManager(civInfo)!!.relationshipLevel() }
 
         for (otherCiv in civsThatWeCanEstablishEmbassyWith) {
-            val rng = civInfo.getDiplomacyManager(otherCiv)!!.state.stateBasedRandom("DiplomacyAutomation.offerToEstablishEmbassy")
             // Default setting is 3
             if ((1..10).random(getRandom(civInfo, otherCiv, "embassy")) < 7) continue
             if (wantsToAcceptEmbassy(civInfo, otherCiv)) {
@@ -157,7 +156,7 @@ object DiplomacyAutomation {
                         tradeLogic.currentTrade.ourOffers.add(TradeOffer(Constants.goldPerTurn, TradeOfferType.Gold_Per_Turn, embassyGptValue, civInfo.gameInfo.speed))
                     else if (civInfo.gold >= embassyValue && ourGpt >= 0)
                         tradeLogic.currentTrade.ourOffers.add(TradeOffer(Constants.flatGold, TradeOfferType.Gold, embassyValue, civInfo.gameInfo.speed))
-                    // else let them make counter offer
+                    // Otherwise, let them make a counteroffer
                 }
                 
                 otherCiv.tradeRequests.add(TradeRequest(civInfo.civID, tradeLogic.currentTrade.reverse()))
@@ -185,7 +184,6 @@ object DiplomacyAutomation {
         }.sortedByDescending { it.getDiplomacyManager(civInfo)!!.relationshipLevel() }
 
         for (otherCiv in civsThatWeCanOpenBordersWith) {
-            val rng = civInfo.getDiplomacyManager(otherCiv)!!.state.stateBasedRandom("DiplomacyAutomation.offerOpenBorders")
             // Default setting is 3
             if ((1..10).random(getRandom(civInfo, otherCiv, "open borders")) < 7) continue
             if (wantsToOpenBorders(civInfo, otherCiv)) {
@@ -213,7 +211,7 @@ object DiplomacyAutomation {
         // Being able to see their capital can give us an advantage later on, especially with espionage enabled
         if (!civInfo.getCapital()!!.getCenterTile().isExplored(otherCiv)) return true
 
-        // Did they not discovered our capital yet?
+        // Have they not discovered our capital yet?
         if (!otherCiv.getCapital()!!.getCenterTile().isExplored(civInfo)) {
             // If we're afraid of them deny embassy
             if (theirDiploManager.relationshipLevel() == RelationshipLevel.Afraid) return false
@@ -281,7 +279,6 @@ object DiplomacyAutomation {
         }
 
         for (otherCiv in civsThatWeCanSignDefensivePactWith) {
-            val rng = civInfo.getDiplomacyManager(otherCiv)!!.state.stateBasedRandom("DiplomacyAutomation.offerDefensivePact")
             // Default setting is 3, this will be changed according to different civ.
             if ((1..10).random(getRandom(civInfo, otherCiv, "defensive pact"))
                 <= 7 * civInfo.getPersonality().inverseScaledFocus(PersonalityValue.Loyal)) continue
@@ -383,7 +380,10 @@ object DiplomacyAutomation {
         if (targetCivs.none()) return
 
         val targetCivsWithMotivation: List<Pair<Civilization, Float>> = targetCivs
-            .map { Pair(it, hasAtLeastMotivationToAttack(civInfo, it, 0f)) }
+            .map {
+                val expansionMotivation = CityLocationTileRanker.getExpansionWarMotivation(civInfo, it)
+                Pair(it, hasAtLeastMotivationToAttack(civInfo, it, 0f, expansionMotivation))
+            }
             .filter { it.second > 0 }.toList()
 
         DeclareWarTargetAutomation.chooseDeclareWarTarget(civInfo, targetCivsWithMotivation)

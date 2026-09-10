@@ -690,10 +690,35 @@ class Tile : IsPartOfGameInfoSerialization {
                 .any { it.isCityCenter() && it.getContinent() != getContinent() } -> false
             getTilesInDistance(modConstants.minimalCityDistance)
                 .any { it.isCityCenter() && it.getContinent() == getContinent() } -> false
+            getForeignCapitalsBlockingSettlement(civ).any() -> false
             // cannot settle in someone else's territory
             owningCity != null && owningCity!!.civ != civ -> false
             else -> true
         }
+    }
+
+    /**
+     * Original capitals whose peace-time protection prevents [civ] from founding a city here.
+     *
+     * A civilization's first city is exempt so close map starts cannot leave it without a capital.
+     * Captured original capitals do not protect their conqueror, and a declaration of war removes
+     * only the protection belonging to that war opponent.
+     */
+    @Readonly
+    fun getForeignCapitalsBlockingSettlement(civ: Civilization): Sequence<City> {
+        val radius = tileMap.getForeignCapitalSettlementProtectionRadius()
+        if (radius <= 0 || civ.cities.isEmpty()) return emptySequence()
+
+        return getTilesInDistance(radius)
+            .filter { it.isCityCenter() }
+            .map { it.getCity()!! }
+            .filter {
+                it.civ != civ
+                    && it.civ.isMajorCiv()
+                    && it.isOriginalCapital
+                    && it.foundingCivObject == it.civ
+                    && !civ.isAtWarWith(it.civ)
+            }
     }
 
     /** The two tiles have a river between them */

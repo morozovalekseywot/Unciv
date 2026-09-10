@@ -25,11 +25,27 @@ object MotivationToAttackAutomation {
     /** Will return the motivation to attack, but might short circuit if the value is guaranteed to
      * be lower than `atLeast`. So any values below `atLeast` should not be used for comparison. */
     @Readonly
-    fun hasAtLeastMotivationToAttack(civInfo: Civilization, targetCiv: Civilization, atLeast: Float): Float {
+    fun hasAtLeastMotivationToAttack(
+        civInfo: Civilization,
+        targetCiv: Civilization,
+        atLeast: Float,
+        expansionMotivation: Float = 0f
+    ): Float {
         val diplomacyManager = civInfo.getDiplomacyManager(targetCiv)!!
         val personality = civInfo.getPersonality()
 
-        val targetCitiesWithOurCity = civInfo.threatManager.getNeighboringCitiesOfOtherCivs().filter { it.second.civ == targetCiv }.toList()
+        var targetCitiesWithOurCity = civInfo.threatManager.getNeighboringCitiesOfOtherCivs()
+            .filter { it.second.civ == targetCiv }
+            .toList()
+        if (targetCitiesWithOurCity.isEmpty() && expansionMotivation > 0f) {
+            val targetCapital = targetCiv.cities.firstOrNull {
+                it.isOriginalCapital && it.foundingCivObject == targetCiv
+            } ?: return 0f
+            val closestOwnCity = civInfo.cities.minByOrNull {
+                it.getCenterTile().aerialDistanceTo(targetCapital.getCenterTile())
+            } ?: return 0f
+            targetCitiesWithOurCity = listOf(Pair(closestOwnCity, targetCapital))
+        }
         val targetCities = targetCitiesWithOurCity.map { it.second }
 
         if (targetCitiesWithOurCity.isEmpty()) return 0f
@@ -44,8 +60,10 @@ object MotivationToAttackAutomation {
 
         val modifiers: MutableList<Pair<String, Float>> = mutableListOf()
 
-        // If our personality is to declare war more then we should have a higher base motivation (a negative number closer to 0)
+        // If our personality favors declaring war more, then we should have a higher base motivation (a negative number closer to 0)
         modifiers.add(Pair("Base motivation", -(15f * personality.inverseScaledFocus(PersonalityValue.DeclareWar))))
+
+        modifiers.add(Pair("Expansion opportunity", expansionMotivation))
 
         modifiers.add(Pair("Relative combat strength", getCombatStrengthModifier(civInfo, targetCiv, ourCombatStrength, theirCombatStrength + 0.8f * civInfo.threatManager.getCombinedForceOfWarringCivs())))
         // TODO: For now this will be a very high value because the AI can't handle multiple fronts, this should be changed later though
@@ -108,8 +126,8 @@ object MotivationToAttackAutomation {
         if (diplomacyManager.resourcesFromTrade().any { it.amount > 0 })
             modifiers.add(Pair("Receiving trade resources", -8f * personality.scaledFocus(PersonalityValue.Commerce)))
 
-        // If their cities don't have any nearby cities that are also targets to us and it doesn't include their capital
-        // Then there cities are likely isolated and a good target.
+        // If their cities have no nearby cities that are also targets for us and the group does not include their capital,
+        // their cities are likely isolated and make good targets.
         if (targetCiv.getCapital(true) !in targetCities
                 && targetCities.all { theirCity -> !theirCity.neighboringCities.any { it !in targetCities } }) {
             modifiers.add(Pair("Isolated city", 10f * personality.scaledFocus(PersonalityValue.Aggressive)))

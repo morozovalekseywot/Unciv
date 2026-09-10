@@ -217,6 +217,15 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
     @Readonly operator fun contains(hexCoord: HexCoord) = contains(hexCoord.x, hexCoord.y)
     @Readonly fun contains(x: Int, y: Int) = getOrNull(x, y) != null
 
+    /** Effective peace-time protection radius around foreign original capitals.
+     * Tiny and Small maps need all available settling space, so the protection starts at Medium. */
+    @Readonly
+    fun getForeignCapitalSettlementProtectionRadius(): Int {
+        val effectiveMapSize = mapParameters.mapSize.getPredefinedOrNextSmaller()
+        if (effectiveMapSize.radius < MapSize.Predefined.Medium.radius) return 0
+        return gameInfo.ruleset.modOptions.constants.foreignCapitalSettlementProtectionRadius
+    }
+
     @Readonly operator fun get(vector: Vector2) = get(vector.x.toInt(), vector.y.toInt())
     @Readonly operator fun get(hexCoord: HexCoord) = get(hexCoord.x, hexCoord.y)
     @Readonly operator fun get(x: Int, y: Int) = tileMatrix[x - leftX][y - bottomY]!!
