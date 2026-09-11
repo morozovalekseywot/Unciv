@@ -57,8 +57,9 @@ object RegionCitySiteValidator {
             if (foreignStartTiles.any { tile.aerialDistanceTo(it) < minAerialDistance }) continue
 
             var workableCount = 0
-            for (workTile in tile.getTilesInDistance(workRange))
+            tile.forEachTileInDistance(workRange) { workTile ->
                 if (workTile != tile && isUsableTile(workTile, tileData)) workableCount++
+            }
             if (workableCount >= minWorkableTiles)
                 candidates.add(CitySiteCandidate(tile, workableCount))
         }

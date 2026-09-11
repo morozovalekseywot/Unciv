@@ -172,7 +172,7 @@ object RegionStartFinder {
         // Go through all rings
         for (ring in 1..3) {
             // Sum up the values for this ring
-            for (outerTile in tile.getTilesAtDistance(ring)) {
+            tile.forEachTileAtDistance(ring) { outerTile ->
                 val outerTileData = tileData[outerTile]!!
                 if (outerTileData.isJunk)
                     totalJunk++
@@ -245,6 +245,7 @@ object RegionStartFinder {
      *  region is (sea/ocean/unclaimed tiles never count as "foreign", so coastal-biased civs are unaffected).
      *  Tiles farther than [ModConstants.pangaeaInlandBonusSearchRadius][com.unciv.models.ModConstants.pangaeaInlandBonusSearchRadius]
      *  rings from any foreign region tile get the maximum bonus. */
+    @Suppress("DEPRECATION") // Sequence iteration permits an immediate return when a foreign region is found.
     private fun getInlandBonus(tile: Tile, tileData: TileDataMap, region: Region): Int {
         if (!isInlandBonusActive(tile)) return 0
         val constants = tile.tileMap.ruleset!!.modOptions.constants
@@ -263,8 +264,9 @@ object RegionStartFinder {
         region.startPosition = position
 
         for ((ring, penalty) in closeStartPenaltyForRing) {
-            for (outerTile in region.tileMap[position].getTilesAtDistance(ring))
+            region.tileMap[position].forEachTileAtDistance(ring) { outerTile ->
                 tileData[outerTile]!!.addCloseStartPenalty(penalty)
+            }
         }
     }
 }

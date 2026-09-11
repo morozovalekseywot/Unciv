@@ -321,6 +321,7 @@ class CityReligionManager : IsPartOfGameInfoSerialization {
     }
 
     @Readonly
+    @Suppress("DEPRECATION") // Sequence.any can stop as soon as an inquisitor is found.
     fun isProtectedByInquisitor(fromReligion: String? = null): Boolean {
         for (tile in city.getCenterTile().getTilesInDistance(1)) {
             for (unit in listOf(tile.civilianUnit, tile.militaryUnit)) {

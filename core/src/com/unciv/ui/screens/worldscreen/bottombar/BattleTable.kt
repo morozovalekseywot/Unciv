@@ -381,8 +381,9 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         val blastRadius = attacker.unit.getNukeBlastRadius()
 
         val defenderNameWrapper = Table()
-        for (tile in targetTile.getTilesInDistance(blastRadius)) {
-            val defender = tryGetDefenderAtTile(tile, true) ?: continue
+        targetTile.forEachTileInDistance(blastRadius) { tile ->
+            val defender = tryGetDefenderAtTile(tile, true)
+            if (defender == null) return@forEachTileInDistance
 
             val defenderLabel = defender.getName().toLabel(hideIcons = true)
             defenderNameWrapper.add(getIcon(defender)).padRight(5f)
@@ -463,7 +464,7 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
 
         val attackButton = "Air Sweep".toTextButton().apply { color = Color.RED }
 
-        val canReach = attacker.unit.currentTile.getTilesInDistance(attacker.unit.getRange()).contains(targetTile)
+        val canReach = attacker.unit.currentTile.aerialDistanceTo(targetTile) <= attacker.unit.getRange()
 
         if (!worldScreen.isPlayersTurn || !attacker.canAttack() || !canReach || !canAttack) {
             attackButton.disable()

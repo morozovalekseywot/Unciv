@@ -114,6 +114,7 @@ class Tile : IsPartOfGameInfoSerialization {
     // This is for performance - since we access the neighbors of a tile ALL THE TIME,
     // and the neighbors of a tile never change, it's much more efficient to save the list once and for all!
     @delegate:Transient
+    @Suppress("DEPRECATION") // forEachTileAtDistance(1) itself uses this cache, so it would recurse here.
     val neighbors: Sequence<Tile> by lazy {
         if (!isTilemapInitialized()) emptySequence()
         else getTilesAtDistance(1).toList().asSequence()
@@ -615,7 +616,7 @@ class Tile : IsPartOfGameInfoSerialization {
                 // Now that we know that this resource matches the filter - can the observer see that there's a resource here?
                 if (resourceObject.revealedBy == null) return true  // no need for tech
                 if (observingCiv == null) return true  // can't check tech, assume visible - consistent with the direct resource-name check above
-                return observingCiv.canSeeResource(resourceObject)
+                observingCiv.canSeeResource(resourceObject)
             }
         }
     }
@@ -625,12 +626,15 @@ class Tile : IsPartOfGameInfoSerialization {
     @Readonly fun getViewableTilesList(distance: Int): List<Tile> = tileMap.getViewableTiles(position, distance)
     @Deprecated(message = "forEachTileInDistance is faster. If not viable, then this can still be used",
         replaceWith = ReplaceWith("forEachTileInDistance"))
+    @Suppress("DEPRECATION")
     @Readonly fun getTilesInDistance(distance: Int): Sequence<Tile> = tileMap.getTilesInDistance(position, distance)
     @Deprecated(message = "forEachTileInDistanceRange is faster. If not viable, then this can still be used",
         replaceWith = ReplaceWith("forEachTileInDistanceRange"))
+    @Suppress("DEPRECATION")
     @Readonly fun getTilesInDistanceRange(range: IntRange): Sequence<Tile> = tileMap.getTilesInDistanceRange(position, range)
     @Deprecated(message = "forEachTileAtDistance is faster. If not viable, then this can still be used",
         replaceWith = ReplaceWith("forEachTileAtDistance"))
+    @Suppress("DEPRECATION")
     @Readonly fun getTilesAtDistance(distance: Int): Sequence<Tile> = tileMap.getTilesAtDistance(position, distance)
 
     @Readonly fun forEachTileInDistance(distance: Int, op: (Tile)->Unit) = tileMap.forEachTileInDistance(position, distance, op)
@@ -684,17 +688,25 @@ class Tile : IsPartOfGameInfoSerialization {
     @Readonly
     fun canBeSettled(civ: Civilization): Boolean {
         val modConstants = tileMap.gameInfo.ruleset.modOptions.constants
-        return when {
-            isWater || isImpassible() -> false
-            getTilesInDistance(modConstants.minimalCityDistanceOnDifferentContinents)
-                .any { it.isCityCenter() && it.getContinent() != getContinent() } -> false
-            getTilesInDistance(modConstants.minimalCityDistance)
-                .any { it.isCityCenter() && it.getContinent() == getContinent() } -> false
-            getForeignCapitalsBlockingSettlement(civ).any() -> false
-            // cannot settle in someone else's territory
-            owningCity != null && owningCity!!.civ != civ -> false
-            else -> true
-        }
+        if (isWater || isImpassible()) return false
+
+        val continent = getContinent()
+        var hasCityOnDifferentContinent = false
+        forEachTileInDistance(modConstants.minimalCityDistanceOnDifferentContinents, {
+            it.isCityCenter() && it.getContinent() != continent
+        }) { hasCityOnDifferentContinent = true }
+        if (hasCityOnDifferentContinent) return false
+
+        var hasCityOnSameContinent = false
+        forEachTileInDistance(modConstants.minimalCityDistance, {
+            it.isCityCenter() && it.getContinent() == continent
+        }) { hasCityOnSameContinent = true }
+        if (hasCityOnSameContinent) return false
+
+        if (getForeignCapitalsBlockingSettlement(civ).any()) return false
+        // cannot settle in someone else's territory
+        if (owningCity != null && owningCity!!.civ != civ) return false
+        return true
     }
 
     /**
@@ -705,6 +717,7 @@ class Tile : IsPartOfGameInfoSerialization {
      * only the protection belonging to that war opponent.
      */
     @Readonly
+    @Suppress("DEPRECATION") // The caller needs a lazy Sequence, so callback iteration is not viable.
     fun getForeignCapitalsBlockingSettlement(civ: Civilization): Sequence<City> {
         val radius = tileMap.getForeignCapitalSettlementProtectionRadius()
         if (radius <= 0 || civ.cities.isEmpty()) return emptySequence()
@@ -776,17 +789,6 @@ class Tile : IsPartOfGameInfoSerialization {
         if (isCityCenter() && civInfo.isAtWarWith(tileOwner)
                 && !getCity()!!.hasJustBeenConquered) return false
         return civInfo.diplomacyFunctions.canPassThroughTiles(tileOwner)
-    }
-
-    @Readonly
-    fun hasEnemyInvisibleUnit(viewingCiv: Civilization): Boolean {
-        if (getFirstUnit() == null) return false // common case
-        val unitsInTile = getUnits()
-        return when {
-            unitsInTile.first().civ == viewingCiv -> false
-            unitsInTile.none { it.isInvisible(viewingCiv) } -> false
-            else -> true
-        }
     }
 
     @Readonly

@@ -44,24 +44,23 @@ object CityLocationTileRanker {
             .filter { it.getCenterTile().aerialDistanceTo(unit.getTile()) <= 7 + range }
             .toList()
 
-        val possibleCityLocations = unit.getTile().getTilesInDistance(range)
-            // Filter out tiles that we can't actually found on
-            .filter { canFoundCityOn(unit, it) }
-            .filter { canSettleTile(it, unit.civ, nearbyCities) && (unit.getTile() == it || unit.movement.canMoveTo(it)) }
         val bestTilesToFoundCity = BestTilesToFoundCity()
         @LocalState val baseTileMap = HashMap<Tile, Float>()
+        @LocalState val possibleTileLocationsWithRank = ArrayList<Pair<Tile, Float>>()
+        unit.getTile().forEachTileInDistance(range, {
+            canFoundCityOn(unit, it)
+                && canSettleTile(it, unit.civ, nearbyCities)
+                && (unit.getTile() == it || unit.movement.canMoveTo(it))
+        }) {
+            var tileValue = rankTileToSettle(it, unit.civ, nearbyCities, baseTileMap)
+            val distanceScore = (unit.currentTile.aerialDistanceTo(it) * DISTANCE_PENALTY_PER_TILE).coerceIn(0f, 99f)
+            tileValue *= (100 - distanceScore) / 100
+            if (tileValue < minimumValue) return@forEachTileInDistance
 
-        val possibleTileLocationsWithRank = possibleCityLocations
-            .map {
-                var tileValue = rankTileToSettle(it, unit.civ, nearbyCities, baseTileMap)
-                val distanceScore = (unit.currentTile.aerialDistanceTo(it) * DISTANCE_PENALTY_PER_TILE).coerceIn(0f, 99f)
-                tileValue *= (100 - distanceScore) / 100
-                if (tileValue >= minimumValue)
-                    bestTilesToFoundCity.tileRankMap[it] = tileValue
-
-                Pair(it, tileValue)
-            }.filter { it.second >= minimumValue }
-            .sortedByDescending { it.second }
+            bestTilesToFoundCity.tileRankMap[it] = tileValue
+            possibleTileLocationsWithRank.add(Pair(it, tileValue))
+        }
+        possibleTileLocationsWithRank.sortByDescending { it.second }
 
         val bestReachableTile = possibleTileLocationsWithRank.firstOrNull { unit.movement.canReach(it.first) }
         if (bestReachableTile != null){
@@ -166,15 +165,15 @@ object CityLocationTileRanker {
 
             var bestPeacefulSite = Float.NEGATIVE_INFINITY
             var bestBlockedSite = Float.NEGATIVE_INFINITY
-            for (tile in settler.getTile().getTilesInDistance(EXPANSION_WAR_SEARCH_RANGE)) {
-                if (!canFoundCityOn(settler, tile)) continue
-
+            settler.getTile().forEachTileInDistance(EXPANSION_WAR_SEARCH_RANGE, {
+                canFoundCityOn(settler, it)
+            }) { tile ->
                 val canSettlePeacefully = canSettleTile(tile, civ, nearbyCities)
                 val blockingCapitals = tile.getForeignCapitalsBlockingSettlement(civ).toList()
                 val blockedOnlyByTarget = blockingCapitals.isNotEmpty()
                     && blockingCapitals.all { it.civ == targetCiv }
                     && canSettleTile(tile, civ, nearbyCities, assumeWarWith = targetCiv)
-                if (!canSettlePeacefully && !blockedOnlyByTarget) continue
+                if (!canSettlePeacefully && !blockedOnlyByTarget) return@forEachTileInDistance
 
                 var tileValue = rankTileToSettle(tile, civ, nearbyCities, baseTileMap)
                 val distanceScore = (settler.currentTile.aerialDistanceTo(tile) * DISTANCE_PENALTY_PER_TILE).coerceIn(0f, 99f)
@@ -245,12 +244,12 @@ object CityLocationTileRanker {
 
         var tiles = 0
         for (i in 0..2) {
-                //Ideally, we shouldn't really count the center tile, as it's converted into 1 production 2 food anyways with special cases treated above, but doing so can lead to AI moving settler back and forth until forever
-                for (nearbyTile in newCityTile.getTilesAtDistance(i)) {
-                    tiles++
-                    tileValue += rankTile(nearbyTile, civ, onCoast, newUniqueLuxuryResources, baseTileMap) * (3f / (i + 1))
-                    //Tiles close to the city can be worked more quickly, and thus should gain higher weight.
-                }
+            //Ideally, we shouldn't really count the center tile, as it's converted into 1 production 2 food anyways with special cases treated above, but doing so can lead to AI moving settler back and forth until forever
+            newCityTile.forEachTileAtDistance(i) { nearbyTile ->
+                tiles++
+                tileValue += rankTile(nearbyTile, civ, onCoast, newUniqueLuxuryResources, baseTileMap) * (3f / (i + 1))
+                //Tiles close to the city can be worked more quickly, and thus should gain higher weight.
+            }
         }
 
         // Placing cities on the edge of the map is bad, we can't even build improvements on them!

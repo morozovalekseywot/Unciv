@@ -138,16 +138,18 @@ object StartNormalizer {
     /** Check for very food-heavy starts that might still need some stone to help with production */
     private fun addProductionBonuses(startTile: Tile, ruleset: Ruleset) {
         val rng = GameContext(gameInfo = startTile.tileMap.gameInfo).stateBasedRandom("StartNormalizer.addProductionBonuses")
-        val grassTypePlots = startTile.getTilesInDistanceRange(1..2).filter {
+        val grassTypePlots = ArrayList<Tile>()
+        startTile.forEachTileInDistanceRange(1..2, {
             it.isLand &&
                 getPotentialYield(it, Stat.Food, unimproved = true) >= 2f && // Food neutral natively
                 getPotentialYield(it, Stat.Production) == 0f // Production can't even be improved
-        }.toMutableList()
-        val plainsTypePlots = startTile.getTilesInDistanceRange(1..2).filter {
+        }) { grassTypePlots.add(it) }
+        val plainsTypePlots = ArrayList<Tile>()
+        startTile.forEachTileInDistanceRange(1..2, {
             it.isLand &&
                 getPotentialYield(it, Stat.Food) >= 2f && // Something that can be improved to food neutral
                 getPotentialYield(it, Stat.Production, unimproved = true) >= 1f // Some production natively
-        }.toList()
+        }) { plainsTypePlots.add(it) }
         var productionBonusesNeeded = when {
             grassTypePlots.size >= 9 && plainsTypePlots.isEmpty() -> 2
             grassTypePlots.size >= 6 && plainsTypePlots.size <= 4 -> 1

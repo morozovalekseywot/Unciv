@@ -65,7 +65,7 @@ class ThreatManager(val civInfo: Civilization) {
         val tilesWithEnemyAtDistance: MutableList<Pair<Tile,Int>> = mutableListOf()
         // Search for nearby enemies and store the results
         for (i in minDistanceToSearch..maxDist) {
-            for (searchTile in tile.getTilesAtDistance(i)) {
+            tile.forEachTileAtDistance(i) { searchTile ->
                 if (doesTileHaveMilitaryEnemy(searchTile)) {
                     tilesWithEnemyAtDistance.add(Pair(searchTile, i))
                 }
@@ -116,7 +116,7 @@ class ThreatManager(val civInfo: Civilization) {
         val minDistanceToSearch = (tileData?.distanceSearched?.coerceAtLeast(0) ?: 0) + 1
 
         for (i in minDistanceToSearch..maxDist) {
-            for (searchTile in tile.getTilesAtDistance(i)) {
+            tile.forEachTileAtDistance(i) { searchTile ->
                 if (doesTileHaveMilitaryEnemy(searchTile)) {
                     tilesWithEnemies.add(searchTile)
                     tileDataTilesWithEnemies.add(Pair(searchTile, i))
@@ -144,18 +144,24 @@ class ThreatManager(val civInfo: Civilization) {
     fun getDangerousTiles(unit: MapUnit, distance: Int = 3): HashSet<Tile> {
         val tilesWithEnemyUnits = getTilesWithEnemyUnitsInDistance(unit.getTile(), distance)
         val nearbyRangedEnemyUnits = getEnemyUnitsOnTiles(tilesWithEnemyUnits)
+        val dangerousTiles = HashSet<Tile>()
 
-        val tilesInRangeOfAttack = nearbyRangedEnemyUnits
-            .flatMap { it.getTile().getTilesInDistance(it.getRange()) }
+        for (enemyUnit in nearbyRangedEnemyUnits) {
+            enemyUnit.getTile().forEachTileInDistance(enemyUnit.getRange()) { dangerousTiles.add(it) }
+        }
 
-        val tilesWithinBombardmentRange = tilesWithEnemyUnits
-            .filter { it.isCityCenter() && it.getCity()!!.civ.isAtWarWith(unit.civ) }
-            .flatMap { it.getTilesInDistance(it.getCity()!!.getBombardRange()) }
+        for (enemyTile in tilesWithEnemyUnits) {
+            if (!enemyTile.isCityCenter() || !enemyTile.getCity()!!.civ.isAtWarWith(unit.civ)) continue
+            enemyTile.forEachTileInDistance(enemyTile.getCity()!!.getBombardRange()) {
+                dangerousTiles.add(it)
+            }
+        }
 
-        val tilesWithTerrainDamage = unit.currentTile.getTilesInDistance(distance)
-            .filter { unit.getDamageFromTerrain(it) > 0 }
+        unit.currentTile.forEachTileInDistance(distance, {
+            unit.getDamageFromTerrain(it) > 0
+        }) { dangerousTiles.add(it) }
 
-        return (tilesInRangeOfAttack + tilesWithinBombardmentRange + tilesWithTerrainDamage).toHashSet()
+        return dangerousTiles
     }
 
     /**

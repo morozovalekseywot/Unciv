@@ -49,7 +49,7 @@ object Nuke {
         }
 
         val blastRadius = nuke.unit.getNukeBlastRadius()
-        for (tile in targetTile.getTilesInDistance(blastRadius)) {
+        targetTile.forEachTileInDistance(blastRadius) { tile ->
             checkDefenderCiv(tile.getOwner())
             checkDefenderCiv(Battle.getMapCombatantOfTile(tile)?.getCivInfo())
         }
@@ -65,7 +65,8 @@ object Nuke {
         val blastRadius = attacker.unit.getMatchingUniques(UniqueType.BlastRadius)
             .firstOrNull()?.params?.get(0)?.toInt() ?: 2
 
-        val hitTiles = targetTile.getTilesInDistance(blastRadius)
+        val hitTiles = ArrayList<Tile>()
+        targetTile.forEachTileInDistance(blastRadius) { hitTiles.add(it) }
 
         val (hitCivsTerritory, notifyDeclaredWarCivs) =
             declareWarOnHitCivs(attackingCiv, hitTiles, attacker, targetTile)
@@ -150,7 +151,7 @@ object Nuke {
 
     private fun declareWarOnHitCivs(
         attackingCiv: Civilization,
-        hitTiles: Sequence<Tile>,
+        hitTiles: Iterable<Tile>,
         attacker: MapUnitCombatant,
         targetTile: Tile
     ): Pair<ArrayList<Civilization>, ArrayList<Civilization>> {

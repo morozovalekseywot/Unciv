@@ -42,7 +42,7 @@ class TileDataMap(size: Int) {
 
         for (ring in 1..radius) {
             val ringValue = radius - ring + 1
-            for (outerTile in tile.getTilesAtDistance(ring)) {
+            tile.forEachTileAtDistance(ring) { outerTile ->
                 val data = this[outerTile]!!
                 if (data.impacts.containsKey(type))
                     data.impacts[type] = min(50, max(ringValue, data.impacts[type]!!) + 2)

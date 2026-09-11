@@ -238,7 +238,7 @@ class TileStatFunctions(val tile: Tile) {
 
     fun getTileStartScore(cityCenterMinStats: Stats): Float {
         var sum = 0f
-        for (closeTile in tile.getTilesInDistance(2)) {
+        tile.forEachTileInDistance(2) { closeTile ->
             val tileYield = closeTile.stats.getTileStartYield(
                 if (closeTile == tile) cityCenterMinStats else Stats.ZERO
             )

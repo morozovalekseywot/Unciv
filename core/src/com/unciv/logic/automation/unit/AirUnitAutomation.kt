@@ -217,6 +217,7 @@ object AirUnitAutomation {
         tryRelocateMissileToNearbyAttackableCities(unit)
     }
 
+    @Suppress("DEPRECATION") // Sequence iteration stops as soon as a suitable city is found.
     private fun tryRelocateMissileToNearbyAttackableCities(unit: MapUnit) {
         val tilesInRange = unit.currentTile.getTilesInDistance(unit.getRange())
         val immediatelyReachableCities = tilesInRange

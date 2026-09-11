@@ -134,6 +134,7 @@ object UnitAutomation {
                 && unit.movement.canReach(tile) // expensive, evaluate last
     }
 
+    @Suppress("DEPRECATION") // Sequence iteration can stop at the first reachable exploration target.
     internal fun tryExplore(unit: MapUnit): Boolean = timeThis("tryExplore") {
         if (tryGoToRuin(unit) && (!unit.hasMovement() || unit.isDestroyed)) return true
 
@@ -172,6 +173,7 @@ object UnitAutomation {
     }
 
     // "Fog busting" is a strategy where you put your units slightly outside your borders to discourage barbarians from spawning
+    @Suppress("DEPRECATION") // Sequence all/iteration both stop as soon as their result is known.
     private fun tryFogBust(unit: MapUnit): Boolean {
         if (!Automation.afraidOfBarbarians(unit.civ)) return false // Not if we're not afraid
 
