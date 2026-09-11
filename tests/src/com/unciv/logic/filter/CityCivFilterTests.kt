@@ -49,6 +49,7 @@ class CityCivFilterTests {
     
     @Test
     fun testBuildingFilters() {
+        val otherCity = game.addCity(civ, game.tileMap[-2,0])
         val testCultureBuilding = game.createBuilding("[+1 Culture]")
         val testFilterBuilding = game.createBuilding("hasFilter")
         val testCultureWithOtherBuilding = game.createBuilding("[+1 Culture] <in cities with a [hasFilter]>")
@@ -71,7 +72,15 @@ class CityCivFilterTests {
             buildingsToTest.count { it.matchesFilter(filter, city.state) }
         },
             "hasFilter", 2,
-            "Culture", 1, // TODO: Bug: cities aren't given a city context for filtering
+            "Culture", 2,
+            "Wonder", 1,
+            "All", 5,
+        )
+        runTestParcours("", { filter: String ->
+            buildingsToTest.count { it.matchesFilter(filter, otherCity.state) }
+        },
+            "hasFilter", 1,
+            "Culture", 1,
             "Wonder", 1,
             "All", 5,
         )

@@ -503,10 +503,23 @@ class Building : RulesetStatsObject(), INonPerpetualConstruction {
     @Readonly
     fun matchesFilter(filter: String, state: GameContext? = null): Boolean =
         MultiFilter.multiFilter(filter, {
-            cachedMatchesFilterResult.getOrPut(it) { matchesSingleFilter(it) } ||
-                state != null && hasTagUnique(it, state) ||
-                state == null && hasTagUnique(it)
+            if (cachedMatchesFilterResult.getOrPut(it) { matchesSingleFilter(it) })
+                return@multiFilter true
+            if (state == null)
+                return@multiFilter hasTagUnique(it)
+            if (hasTagUnique(it, state))
+                return@multiFilter true
+            matchesStateDependentStatFilter(it, state)
         })
+
+    @Readonly
+    private fun matchesStateDependentStatFilter(filter: String, state: GameContext): Boolean {
+        val stat = Stat.safeValueOf(filter) ?: return false
+        if (getMatchingUniques(UniqueType.Stats, state).any { it.stats[stat] > 0 }) return true
+        if (getMatchingUniques(UniqueType.StatsFromTiles, state).any { it.stats[stat] > 0 }) return true
+        if (getMatchingUniques(UniqueType.StatsPerPopulation, state).any { it.stats[stat] > 0 }) return true
+        return stat == Stat.Happiness && hasUnique(UniqueType.RemovesAnnexUnhappiness, state)
+    }
 
     @Readonly
     private fun matchesSingleFilter(filter: String): Boolean {
