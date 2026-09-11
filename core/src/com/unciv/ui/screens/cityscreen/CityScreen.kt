@@ -51,7 +51,9 @@ class CityScreen(
     /** City ambience sound player proxies can be passed from one CityScreen instance to the next
      *  to avoid premature stops or rewinds. Only the fresh CityScreen from WorldScreen or Overview
      *  will instantiate a new CityAmbiencePlayer and start playing. */
-    ambiencePlayer: CityAmbiencePlayer? = null
+    ambiencePlayer: CityAmbiencePlayer? = null,
+    /** Defaults to the current WorldScreen map zoom when entering a city. */
+    initMapZoom: Float? = null
 ): BaseScreen(), RecreateOnResize {
     companion object {
         /** Distance from stage edges to floating widgets */
@@ -151,7 +153,12 @@ class CityScreen(
 
         UncivGame.Current.settings.addCompletedTutorialTask("Enter city screen")
 
-        addTiles()
+        val initialMapZoom = when {
+            initMapZoom != null -> initMapZoom
+            game.worldScreen != null -> game.worldScreen!!.mapHolder.scaleX
+            else -> 1f
+        }
+        addTiles(initialMapZoom)
 
         // If we are spying then we shoulden't be able to see their construction screen.
         constructionsTable.addActorsToStage()
@@ -358,7 +365,7 @@ class CityScreen(
         stage.addActor(razeCityButtonHolder)
     }
 
-    private fun addTiles() {
+    private fun addTiles(initialMapZoom: Float) {
         val viewRange = max(cityView.getExpandRange(), cityView.getWorkRange())
         val tileSetStrings = TileSetStrings(cityView.getRuleset(), game.settings)
         val cityTileGroups = cityView.centerTile().getVisibleTilesInDistance(viewRange)
@@ -391,6 +398,7 @@ class CityScreen(
         mapScrollPane.setSize(stage.width, stage.height)
         stage.addActor(mapScrollPane)
 
+        mapScrollPane.zoom(initialMapZoom)
         mapScrollPane.layout() // center scrolling
         mapScrollPane.scrollPercentX = 0.5f
         mapScrollPane.scrollPercentY = 0.5f
@@ -552,15 +560,23 @@ class CityScreen(
         if (numCities == 0) return
         val indexOfCity = viewableCities.indexOfFirst { it.getCity() === cityView.getCity() }
         val indexOfNextCity = (indexOfCity + delta + numCities) % numCities
-        val newCityScreen = CityScreen(viewableCities[indexOfNextCity], ambiencePlayer = passOnCityAmbiencePlayer())
-        newCityScreen.mapScrollPane.zoom(mapScrollPane.scaleX) // Retain zoom
+        val newCityScreen = CityScreen(
+            viewableCities[indexOfNextCity],
+            ambiencePlayer = passOnCityAmbiencePlayer(),
+            initMapZoom = mapScrollPane.scaleX
+        )
         newCityScreen.update()
         game.replaceCurrentScreen(newCityScreen)
     }
 
     // Don't use passOnCityAmbiencePlayer here - continuing play on the replacement screen would be nice,
     // but the rapid firing of several resize events will get that un-synced, they would no longer stop on leaving.
-    override fun recreate(): BaseScreen = CityScreen(cityView, selectedConstruction, selectedTile)
+    override fun recreate(): BaseScreen = CityScreen(
+        cityView,
+        selectedConstruction,
+        selectedTile,
+        initMapZoom = mapScrollPane.scaleX
+    )
 
     override fun dispose() {
         cityAmbiencePlayer?.dispose()
