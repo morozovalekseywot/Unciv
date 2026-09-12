@@ -48,6 +48,28 @@ class Trade : IsPartOfGameInfoSerialization {
         theirOffers.addAll(trade.theirOffers)
     }
 
+    /** Nets fungible offers present on both sides, leaving only the difference on one side. */
+    fun normalizeOffers(): Boolean {
+        var changed = false
+        for (ourOffer in ourOffers.toList()) {
+            if (!ourOffer.type.isFungible) continue
+            val theirOffer = theirOffers.firstOrNull {
+                it.name == ourOffer.name
+                    && it.type == ourOffer.type
+                    && it.duration == ourOffer.duration
+            }
+            if (theirOffer == null) continue
+
+            val amountToSubtract = minOf(ourOffer.amount, theirOffer.amount)
+            ourOffer.amount -= amountToSubtract
+            theirOffer.amount -= amountToSubtract
+            if (ourOffer.amount == 0) ourOffers.remove(ourOffer)
+            if (theirOffer.amount == 0) theirOffers.remove(theirOffer)
+            changed = true
+        }
+        return changed
+    }
+
     @Readonly fun isPeaceTreaty() = ourOffers.any { it.type == TradeOfferType.Treaty && it.name == Constants.peaceTreaty }
 }
 

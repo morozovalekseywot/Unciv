@@ -52,7 +52,7 @@ object TradeAutomation {
     /** @return a TradeRequest with the same ourOffers as [tradeRequest] but with enough theirOffers
      *  added to make the deal acceptable. Will find a valid counteroffer if any exist, but is not
      *  guaranteed to find the best or closest one. */
-    private fun getCounteroffer(civInfo: Civilization, tradeRequest: TradeRequest): TradeRequest? {
+    fun getCounteroffer(civInfo: Civilization, tradeRequest: TradeRequest): TradeRequest? {
         val otherCiv = civInfo.gameInfo.getCivilization(tradeRequest.requestingCiv)
         // AIs counteroffering each other could be problematic if they ping-pong back and forth forever
         // If this happens, that means our trade automation doesn't settle into an equilibrium that's favourable to both parties, so that should be updated when observed
@@ -67,11 +67,21 @@ object TradeAutomation {
         val potentialAsks = HashMap<TradeOffer, Int>()
         val counterofferAsks = HashMap<TradeOffer, Int>()
         val counterofferGifts = ArrayList<TradeOffer>()
+        val tradeHasNonGoldOffers = tradeRequest.trade.ourOffers.any {
+            it.type != TradeOfferType.Gold && it.type != TradeOfferType.Gold_Per_Turn
+        } || tradeRequest.trade.theirOffers.any {
+            it.type != TradeOfferType.Gold && it.type != TradeOfferType.Gold_Per_Turn
+        }
 
         for (offer in tradeLogic.theirAvailableOffers) {
-            if ((offer.type == TradeOfferType.Gold || offer.type == TradeOfferType.Gold_Per_Turn)
-                && tradeRequest.trade.ourOffers.any { it.type == offer.type })
-                continue // Don't want to counteroffer straight gold for gold, that's silly
+            if (offer.type == TradeOfferType.Gold
+                && !tradeHasNonGoldOffers
+                && tradeRequest.trade.ourOffers.any { it.type == TradeOfferType.Gold })
+                continue // A trade containing nothing but gold for gold is pointless
+            if (offer.type.isFungible
+                && offer.type != TradeOfferType.Gold
+                && tradeRequest.trade.ourOffers.any { it.type == offer.type && it.name == offer.name })
+                continue // Non-gold fungible offers should not be added to both sides
             if (!offer.isTradable())
                 continue // For example resources gained by trade or CS
             if (offer.type == TradeOfferType.City)

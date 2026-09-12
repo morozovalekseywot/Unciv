@@ -2,20 +2,25 @@ package com.unciv.logic.trade
 
 /** Enum that classifies Trade Types
  * @param numberType How the value number is formatted - None, Simple number or with a Gold symbol
- * @param isImmediate  Trade is a one-time effect without duration
+ * @param isImmediate Trade is a one-time effect without duration
+ * @param isFungible Equal offers from both sides can be replaced with their net difference
  */
 @Suppress("EnumEntryName")  // We do want the underscores in our names
-enum class TradeOfferType(val numberType: TradeTypeNumberType, val isImmediate: Boolean) {
+enum class TradeOfferType(
+    val numberType: TradeTypeNumberType,
+    val isImmediate: Boolean,
+    val isFungible: Boolean = false
+) {
     Embassy              (TradeTypeNumberType.None, true),
-    Gold                (TradeTypeNumberType.Gold, true),
-    Gold_Per_Turn       (TradeTypeNumberType.Gold, false),
+    Gold                (TradeTypeNumberType.Gold, true, true),
+    Gold_Per_Turn       (TradeTypeNumberType.Gold, false, true),
     /** Treaties are shared by both sides - like peace treaty and defensive pact */
     Treaty              (TradeTypeNumberType.None, false),
     /** Agreements are one-sided, like open borders */
     Agreement           (TradeTypeNumberType.None, false),
-    Luxury_Resource     (TradeTypeNumberType.Simple, false),
-    Strategic_Resource  (TradeTypeNumberType.Simple, false),
-    Stockpiled_Resource  (TradeTypeNumberType.Simple, true),
+    Luxury_Resource     (TradeTypeNumberType.Simple, false, true),
+    Strategic_Resource  (TradeTypeNumberType.Simple, false, true),
+    Stockpiled_Resource  (TradeTypeNumberType.Simple, true, true),
     Technology          (TradeTypeNumberType.None, true),
     Introduction        (TradeTypeNumberType.None, true),
     WarDeclaration      (TradeTypeNumberType.None, true),
