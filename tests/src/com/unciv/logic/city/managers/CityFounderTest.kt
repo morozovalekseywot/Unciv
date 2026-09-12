@@ -1,6 +1,8 @@
 package com.unciv.logic.city.managers
 
 import com.unciv.Constants
+import com.unciv.UncivGame
+import com.unciv.logic.city.CityFocus
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.HexCoord
 import com.unciv.testing.BaseTestRunner
@@ -154,6 +156,31 @@ class CityFounderTest {
 
         // then
         assertEquals(0, city.population.getFreePopulation())
+    }
+
+    @Test
+    fun `should apply default city focus to new human cities`() {
+        // given
+        val humanCiv = testGame.addCiv(isPlayer = true)
+        UncivGame.Current.settings.defaultCityFocus = CityFocus.ProductionFocus
+
+        // when
+        val city = cityFounder.foundCity(humanCiv, HexCoord.Zero)
+
+        // then
+        assertEquals(CityFocus.ProductionFocus, city.getCityFocus())
+    }
+
+    @Test
+    fun `should not apply default city focus to AI cities`() {
+        // given
+        UncivGame.Current.settings.defaultCityFocus = CityFocus.ProductionFocus
+
+        // when
+        val city = cityFounder.foundCity(civ, HexCoord.Zero)
+
+        // then
+        assertEquals(CityFocus.NoFocus, city.getCityFocus())
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.unciv.logic.city.managers
 
 import com.unciv.Constants
+import com.unciv.UncivGame
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.Proximity
@@ -23,6 +24,8 @@ class CityFounder {
         city.turnAcquired = civInfo.gameInfo.turns
         city.location = cityLocation
         city.setTransients(civInfo)
+        if (civInfo.isHuman())
+            city.setCityFocus(UncivGame.Current.settings.defaultCityFocus)
 
         city.name = generateNewCityName(
             civInfo,

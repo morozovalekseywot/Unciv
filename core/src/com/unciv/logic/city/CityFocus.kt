@@ -4,6 +4,7 @@ import com.unciv.logic.IsPartOfGameInfoSerialization
 import com.unciv.logic.automation.Automation
 import com.unciv.logic.city.managers.CityPopulationManager
 import com.unciv.models.stats.Stat
+import com.unciv.models.translations.tr
 import com.unciv.ui.components.input.KeyboardBinding
 import com.unciv.ui.screens.cityscreen.CitizenManagementTable
 import yairm210.purity.annotations.Pure
@@ -73,6 +74,12 @@ enum class CityFocus(
 
     val statValuesForFocus: List<Stat> by lazy {
         Stat.entries.filter { getStatMultiplier(it) != 1f }
+    }
+
+    override fun toString() = when (this) {
+        GoldGrowthFocus -> "${Stat.Gold.name.tr()} + ${Stat.Food.name.tr()}"
+        ProductionGrowthFocus -> "${Stat.Production.name.tr()} + ${Stat.Food.name.tr()}"
+        else -> (if (binding == KeyboardBinding.None) label else binding.label).tr()
     }
 
     companion object {

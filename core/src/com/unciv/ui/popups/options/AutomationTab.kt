@@ -3,6 +3,7 @@ package com.unciv.ui.popups.options
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.GUI
+import com.unciv.logic.city.CityFocus
 import com.unciv.logic.civilization.PlayerType
 
 internal class AutomationTab(
@@ -22,6 +23,11 @@ internal class AutomationTab(
         addCheckbox("Auto-assign city production", settings::autoAssignCityProduction, updateWorld = true) {
             allCitiesChooseNextConstruction(it)
         }
+        addSelectBox(
+            "Default focus for new cities",
+            settings::defaultCityFocus,
+            CityFocus.entries.filter { it.tableEnabled && it != CityFocus.Manual }
+        )
         addCheckbox("Auto-build roads", settings::autoBuildingRoads)
         addCheckbox("Automated workers replace improvements", settings::automatedWorkersReplaceImprovements)
         addCheckbox("Stop automated workers from removing vegetation terrain", settings::stopAutomatedWorkersRemoveVegetation)

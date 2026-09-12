@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.utils.Base64Coder
 import com.unciv.Constants
 import com.unciv.UncivGame
+import com.unciv.logic.city.CityFocus
 import com.unciv.logic.multiplayer.FriendList
 import com.unciv.logic.multiplayer.chat.ChatWebSocket
 import com.unciv.models.UncivSound
@@ -116,6 +117,7 @@ class GameSettings {
 
     //// Automation
     var autoAssignCityProduction = false
+    var defaultCityFocus = CityFocus.NoFocus
     var autoBuildingRoads = true
     var automatedWorkersReplaceImprovements = true
     var stopAutomatedWorkersRemoveVegetation = false
