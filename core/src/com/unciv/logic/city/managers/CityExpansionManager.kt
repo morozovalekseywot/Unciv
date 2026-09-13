@@ -23,17 +23,31 @@ class CityExpansionManager : IsPartOfGameInfoSerialization {
     lateinit var city: City
     var cultureStored: Int = 0
 
+    /**
+     * Number of tiles outside the initial city ring granted for free when the city was founded.
+     *
+     * A negative value denotes a save from before this field existed. In that case [setTransients]
+     * reconstructs the best possible value from the founding Civilization's uniques.
+     */
+    private var freeTilesAtFounding = -1
+
     fun clone(): CityExpansionManager {
         val toReturn = CityExpansionManager()
         toReturn.cultureStored = cultureStored
+        toReturn.freeTilesAtFounding = freeTilesAtFounding
         return toReturn
     }
 
     @Readonly
     fun tilesClaimed(): Int {
+        return (getTilesOutsideInitialRing() - freeTilesAtFounding.coerceAtLeast(0)).coerceAtLeast(0)
+    }
+
+    @Readonly
+    private fun getTilesOutsideInitialRing(): Int {
         val tilesAroundCity = city.getCenterTile().neighbors
                 .map { it.position }
-        return city.tiles.count { it != city.location && it !in tilesAroundCity}
+        return city.tiles.count { it != city.location && it !in tilesAroundCity }
     }
 
     // This one has conflicting sources -
@@ -121,6 +135,7 @@ class CityExpansionManager : IsPartOfGameInfoSerialization {
 
     //region state-changing functions
     fun reset() {
+        freeTilesAtFounding = 0
         for (tile in city.getTiles())
             relinquishOwnership(tile)
 
@@ -133,17 +148,15 @@ class CityExpansionManager : IsPartOfGameInfoSerialization {
                 .filter { it.getCity() == null }) // can't take ownership of owned tiles (by other cities)
             takeOwnership(tile)
 
-        // Some civs (e.g. Shoshone) get additional tiles when founding a city,
-        // chosen as the best-ranked tiles in a wider radius
+        // Claim one tile at a time, like normal border growth: each claim can make
+        // a valuable tile farther out accessible, as in Civ V's founding bonus.
         val extraTiles = city.civ.getMatchingUniques(UniqueType.CityFoundingExtraTiles)
             .sumOf { it.params[0].toInt() }
-        if (extraTiles > 0) {
-            val candidateTiles = (city.getCenterTile().getTilesAtDistance(2) +
-                city.getCenterTile().getTilesAtDistance(3))
-                .filter { it.getCity() == null }
-                .sortedBy { Automation.rankTileForExpansion(it, city) }
-            for (tile in candidateTiles.take(extraTiles))
-                takeOwnership(tile)
+        for (i in 0 until extraTiles) {
+            val tile = chooseNewTileToOwn()
+            if (tile == null) break
+            takeOwnership(tile)
+            if (tile.aerialDistanceTo(city.getCenterTile()) > 1) freeTilesAtFounding++
         }
     }
 
@@ -164,6 +177,8 @@ class CityExpansionManager : IsPartOfGameInfoSerialization {
      */
     fun relinquishOwnership(tile: Tile) {
         city.tiles = city.tiles.withoutItem(tile.position)
+        if (freeTilesAtFounding > 0)
+            freeTilesAtFounding = freeTilesAtFounding.coerceAtMost(getTilesOutsideInitialRing())
         for (city in city.civ.cities) {
             if (city.isWorked(tile)) {
                 city.stopWorkingTile(tile)
@@ -234,6 +249,20 @@ class CityExpansionManager : IsPartOfGameInfoSerialization {
         val tiles = city.getTiles()
         for (tile in tiles)
             tile.setOwningCity(city)
+
+        if (freeTilesAtFounding >= 0) return
+
+        val foundingCiv = city.foundingCivObject
+        if (foundingCiv == null) {
+            freeTilesAtFounding = 0
+            return
+        }
+
+        var possibleFreeTiles = 0
+        foundingCiv.forEachMatchingUnique(UniqueType.CityFoundingExtraTiles) {
+            possibleFreeTiles += it.params[0].toInt()
+        }
+        freeTilesAtFounding = possibleFreeTiles.coerceAtMost(getTilesOutsideInitialRing())
     }
     //endregion
 }

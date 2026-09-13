@@ -47,13 +47,13 @@
 		"unitType": "Scout",
 		"uniqueTo": "Shoshone",
 		"replaces": "Scout",
-		"movement": 3,
-		"strength": 5,
-		"cost": 25,
+		"movement": 2,
+		"strength": 8,
+		"cost": 45,
 		"requiredTech": "Agriculture",
 		"obsoleteTech": "Scientific Theory",
 		"uniques": [
-			"May upgrade to [Archer] through ruins-like effects",
+			"May upgrade to [Composite Bowman] through ruins-like effects",
 			"Never appears as a Barbarian unit"
 		],
 		"promotions": [
@@ -63,7 +63,7 @@
 		"attackSound": "nonmetalhit",
 		"civilopediaText": [
 			{
-				"text": "The Pathfinder is the Shoshone unique unit, replacing the Scout. It moves faster and has greater sight range, allowing the Shoshone to explore the map quickly and find ancient ruins sooner than other civilizations."
+				"text": "The Pathfinder replaces the Scout. It has the strength of a Warrior, ignores terrain cost and can choose rewards from ancient ruins. A ruins upgrade turns it into a Composite Bowman, retaining its abilities."
 			}
 		]
 	},
@@ -1312,11 +1312,12 @@
 		"unitType": "Mounted",
 		"uniqueTo": "Shoshone",
 		"replaces": "Cavalry",
-		"movement": 5,
+		"movement": 4,
 		"strength": 34,
-		"cost": 225,
+		"cost": 200,
 		"requiredTech": "Military Science",
 		"obsoleteTech": "Combustion",
+		"requiredResource": "Horses",
 		"upgradesTo": "Landship",
 		"uniques": [
 			"Can move after attacking",
@@ -1330,7 +1331,7 @@
 		"attackSound": "cavalry",
 		"civilopediaText": [
 			{
-				"text": "The Comanche Riders are the Shoshone unique unit, replacing the Cavalry. They are faster than standard Cavalry and do not require Horses, reflecting the Shoshone mastery of horsemanship on the Great Plains. Their speed and double movement through Plains make them devastating raiders."
+				"text": "The Comanche Riders are the Shoshone unique unit, replacing the Cavalry. They are cheaper and faster than standard Cavalry, making them effective rapid-response units and raiders."
 			}
 		]
 	},

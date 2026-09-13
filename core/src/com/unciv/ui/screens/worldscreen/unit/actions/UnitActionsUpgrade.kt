@@ -18,6 +18,8 @@ object UnitActionsUpgrade {
         isSpecial: Boolean,
         isAnywhere: Boolean
     ) = sequence<UnitAction> {
+        if (isSpecial && unit.hasUpgradedFromRuins && unit.hasUnique(UniqueType.OneRuinsUpgrade))
+            return@sequence
         val unitTile = unit.getTile()
         val civInfo = unit.civ
         val specialUpgradesTo = if (isSpecial) 
@@ -66,7 +68,7 @@ object UnitActionsUpgrade {
                 goldCostOfUpgrade = goldCostOfUpgrade,
                 newResourceRequirements = resourceRequirementsDelta,
                 action = {
-                    unit.upgrade.performUpgrade(upgradedUnit, isFree, goldCostOfUpgrade)
+                    unit.upgrade.performUpgrade(upgradedUnit, isFree, goldCostOfUpgrade, fromRuins = isSpecial)
                 }.takeIf {
                     isFree || (
                         unit.civ.gold >= goldCostOfUpgrade

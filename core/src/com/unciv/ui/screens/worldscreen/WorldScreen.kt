@@ -453,6 +453,8 @@ class WorldScreen(
 
         if (!hasOpenPopups() && !autoPlay.isAutoPlaying() && isPlayersTurn) {
             when {
+                viewingCiv.ruinsManager.hasPendingChoice() ->
+                    RuinsRewardPopup(this, viewingCiv.ruinsManager.getPendingChoice()!!).open()
                 viewingCiv.shouldShowDiplomaticVotingResults() ->
                     UncivGame.Current.pushScreen(DiplomaticVoteResultScreen(gameInfo.diplomaticVictoryVotesCast, viewingCiv))
                 !gameInfo.oneMoreTurnMode && (viewingCiv.isDefeated() || gameInfo.checkForVictory()) ->
@@ -603,6 +605,10 @@ class WorldScreen(
     }
 
     fun nextTurn() {
+        if (viewingCiv.ruinsManager.hasPendingChoice() && !viewingCiv.isAIOrAutoPlaying()) {
+            shouldUpdate = true
+            return
+        }
         isPlayersTurn = false
         shouldUpdate = true
         val progressBar = NextTurnProgress(nextTurnButton)

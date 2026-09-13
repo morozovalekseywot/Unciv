@@ -370,6 +370,8 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
      *  @param shouldGainTime on a multiplayer game, if true, makes the player whose turn is ended recover time to play before risking getting forced to resign, 'false' by default 
      */
     fun nextTurn(progressBar: NextTurnProgress? = null, shouldGainTime: Boolean = false): Unit = timeThis("GameInfo.nextTurn") {
+        if (currentPlayerCiv.isAIOrAutoPlaying()) currentPlayerCiv.ruinsManager.resolvePendingChoicesAutomatically()
+        if (currentPlayerCiv.ruinsManager.hasPendingChoice()) return
         var player = currentPlayerCiv
         var playerIndex = civilizations.indexOf(player)
 

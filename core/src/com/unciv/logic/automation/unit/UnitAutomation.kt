@@ -34,6 +34,7 @@ object UnitAutomation {
     private const val CLOSE_ENEMY_TURNS_AWAY_LIMIT = 3f
 
     fun automateUnitMoves(unit: MapUnit):Unit = timeThis("automateUnitMoves") {
+        if (unit.civ.ruinsManager.hasPendingChoice(unit)) return
         check(!unit.civ.isBarbarian) { "Barbarians is not allowed here." }
 
         // Might die next turn - move!
@@ -79,7 +80,7 @@ object UnitAutomation {
         // Accompany settlers
         if (tryAccompanySettlerOrGreatPerson(unit)) return
 
-        if (tryGoToRuin(unit) && !unit.hasMovement()) return
+        if (tryGoToRuin(unit) && (!unit.hasMovement() || unit.isDestroyed || unit.civ.ruinsManager.hasPendingChoice(unit))) return
 
         if (unit.health < 50 && (tryRetreat(unit) || tryHealUnit(unit))) return // do nothing but heal
 
@@ -136,7 +137,8 @@ object UnitAutomation {
 
     @Suppress("DEPRECATION") // Sequence iteration can stop at the first reachable exploration target.
     internal fun tryExplore(unit: MapUnit): Boolean = timeThis("tryExplore") {
-        if (tryGoToRuin(unit) && (!unit.hasMovement() || unit.isDestroyed)) return true
+        if (unit.civ.ruinsManager.hasPendingChoice(unit)) return true
+        if (tryGoToRuin(unit) && (!unit.hasMovement() || unit.isDestroyed || unit.civ.ruinsManager.hasPendingChoice(unit))) return true
 
         val unitVisibilityRange = unit.getVisibilityRange()
         val explorableTilesThisTurn =
@@ -676,7 +678,8 @@ object UnitAutomation {
     /** This is what a unit with the 'explore' action does.
     It also explores, but also has other functions, like healing if necessary. */
     fun automatedExplore(unit: MapUnit) {
-        if (tryGoToRuin(unit) && (!unit.hasMovement() || unit.isDestroyed)) return
+        if (unit.civ.ruinsManager.hasPendingChoice(unit)) return
+        if (tryGoToRuin(unit) && (!unit.hasMovement() || unit.isDestroyed || unit.civ.ruinsManager.hasPendingChoice(unit))) return
         if (unit.health < 80 && tryHealUnit(unit)) return
         if (tryExplore(unit)) return
         unit.civ.addNotification("${unit.shortDisplayName()} finished exploring.", MapUnitAction(unit), NotificationCategory.Units, unit.name, "OtherIcons/Sleep")

@@ -3033,9 +3033,6 @@
 		"adjective": [
 			"Shoshone"
 		],
-		"startBias": [
-			"Plains"
-		],
 		"preferredVictoryType": "Domination",
 		"personality": "Pocatello",
 		"startIntroPart1": "Hail, mighty Pocatello, chief of the Shoshone people! Your ancestors roamed the vast Great Plains and the rugged lands of the American West for centuries, living in harmony with the land and mastering the art of survival. The Shoshone were among the most widespread of the native peoples of North America, their territory stretching from the Rocky Mountains to the Great Basin.",
@@ -3059,7 +3056,9 @@
 		],
 		"uniqueName": "Great Expanse",
 		"uniques": [
-			"[8] additional tiles when founding a city"
+			"Starts with [Pathfinder] instead of [Warrior] <if starting in the [Ancient era]>",
+			"[8] additional tiles when founding a city",
+			"[+15]% Strength <for [{Land} {Military} {non-[Helicopter]}] units> <when fighting in [Friendly Land] tiles>"
 		],
 		"cities": [
 			"Pocatello",

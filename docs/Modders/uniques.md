@@ -1242,6 +1242,13 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Global, Unit
 
 ## Nation uniques
+??? example  "Starts with [unit] instead of [unit2]"
+	Replaces matching starting units, including difficulty bonuses, after resolving era-specific units. Does not change units produced later.
+
+	Example: "Starts with [Musketman] instead of [Musketman]"
+
+	Applicable to: Nation
+
 ??? example  "Starts with [tech]"
 	Example: "Starts with [Agriculture]"
 
@@ -2463,6 +2470,16 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 ??? example  "May upgrade to [unit] through ruins-like effects"
 	Example: "May upgrade to [Musketman] through ruins-like effects"
+
+	Applicable to: Unit
+
+??? example  "Can only upgrade once through ruins-like effects"
+	Limits special upgrades to one per unit, including after normal upgrades and saving/loading. Does not restrict normal or other free upgrades.
+
+	Applicable to: Unit
+
+??? example  "Can choose the reward from ancient ruins"
+	Human players choose an available ruin reward. The two most recent rewards are excluded, as with random ruins. AI and autoplay receive a random reward.
 
 	Applicable to: Unit
 

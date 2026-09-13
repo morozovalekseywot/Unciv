@@ -1,5 +1,6 @@
 package com.unciv.logic.city.managers
 
+import com.unciv.json.json
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.HexCoord
@@ -78,6 +79,114 @@ class CityExpansionManagerTest {
         // then
         val cultureToNextTileAfterExpansion = cityExpansionManager.getCultureToNextTile()
         assertTrue(cultureToNextTile < cultureToNextTileAfterExpansion)
+    }
+
+    @Test
+    fun `free tiles at city founding should not increase expansion costs`() {
+        // given
+        val game = TestGame()
+        game.makeHexagonalMap(5)
+        val expansiveCiv = game.addCiv("[8] additional tiles when founding a city")
+
+        // when
+        val expansiveCity = game.addCity(expansiveCiv, game.getTile(HexCoord.Zero))
+
+        // then
+        assertEquals(15, expansiveCity.tiles.size)
+        assertEquals(0, expansiveCity.expansion.tilesClaimed())
+        assertEquals(10, expansiveCity.expansion.getCultureToNextTile())
+        var unownedSecondRingTileCost = 0
+        expansiveCity.getCenterTile().forEachTileAtDistance(2) {
+            if (it.getOwner() == null && unownedSecondRingTileCost == 0)
+                unownedSecondRingTileCost = expansiveCity.expansion.getGoldCostOfTile(it)
+        }
+        assertEquals(50, unownedSecondRingTileCost)
+    }
+
+    @Test
+    fun `free founding tiles reconsider valuable outer tiles after each claim`() {
+        val game = TestGame()
+        game.makeHexagonalMap(5)
+        game.getTile(2, 0).setTileResource("Gold Ore")
+        game.getTile(3, 0).setTileResource("Gold Ore")
+        val expansiveCiv = game.addCiv("[8] additional tiles when founding a city")
+
+        val expansiveCity = game.addCity(expansiveCiv, game.getTile(HexCoord.Zero))
+
+        assertEquals(15, expansiveCity.tiles.size)
+        assertTrue(HexCoord(2, 0) in expansiveCity.tiles)
+        assertTrue(HexCoord(3, 0) in expansiveCity.tiles)
+        assertEquals(0, expansiveCity.expansion.tilesClaimed())
+    }
+
+    @Test
+    fun `replacement expansion manager should infer free founding tiles from an old save`() {
+        // given
+        val game = TestGame()
+        game.makeHexagonalMap(5)
+        val expansiveCiv = game.addCiv("[8] additional tiles when founding a city")
+        val expansiveCity = game.addCity(expansiveCiv, game.getTile(HexCoord.Zero))
+        val expansionFromOldSave = CityExpansionManager()
+        expansionFromOldSave.city = expansiveCity
+
+        // when
+        expansionFromOldSave.setTransients()
+
+        // then
+        assertEquals(0, expansionFromOldSave.tilesClaimed())
+    }
+
+    @Test
+    fun `cloning a city should preserve its free founding tiles`() {
+        // given
+        val game = TestGame()
+        game.makeHexagonalMap(5)
+        val expansiveCiv = game.addCiv("[8] additional tiles when founding a city")
+        val expansiveCity = game.addCity(expansiveCiv, game.getTile(HexCoord.Zero))
+
+        // when
+        val clonedCity = expansiveCity.clone()
+        clonedCity.setTransients(expansiveCiv)
+
+        // then
+        assertEquals(0, clonedCity.expansion.tilesClaimed())
+    }
+
+    @Test
+    fun `free founding tile count should be serialized`() {
+        // given
+        val game = TestGame()
+        game.makeHexagonalMap(5)
+        val expansiveCiv = game.addCiv("[8] additional tiles when founding a city")
+        val expansiveCity = game.addCity(expansiveCiv, game.getTile(HexCoord.Zero))
+
+        // when
+        val serializedExpansion = json().toJson(expansiveCity.expansion)
+        val loadedExpansion = json().fromJson(CityExpansionManager::class.java, serializedExpansion)
+        loadedExpansion.city = expansiveCity
+        loadedExpansion.setTransients()
+
+        // then
+        assertTrue("\"freeTilesAtFounding\":8" in serializedExpansion)
+        assertEquals(0, loadedExpansion.tilesClaimed())
+    }
+
+    @Test
+    fun `reacquiring a lost free founding tile should count as a later claim`() {
+        // given
+        val game = TestGame()
+        game.makeHexagonalMap(5)
+        val expansiveCiv = game.addCiv("[8] additional tiles when founding a city")
+        val expansiveCity = game.addCity(expansiveCiv, game.getTile(HexCoord.Zero))
+        val freeTile = expansiveCity.getTiles()
+            .first { it.aerialDistanceTo(expansiveCity.getCenterTile()) == 2 }
+
+        // when
+        expansiveCity.expansion.relinquishOwnership(freeTile)
+        expansiveCity.expansion.takeOwnership(freeTile)
+
+        // then
+        assertEquals(1, expansiveCity.expansion.tilesClaimed())
     }
 
     @Test

@@ -485,6 +485,7 @@ class UnitMovement(val unit: MapUnit) {
     }
 
     fun moveToTile(destination: Tile, considerZoneOfControl: Boolean = true): Unit = timeThis<Unit>("moveToTile") {
+        if (unit.civ.ruinsManager.hasPendingChoice(unit)) return
         if (destination == unit.getTile() || unit.isDestroyed) return // already here (or dead)!
         // Reset closestEnemy chache
         val escortUnit = if (unit.isEscorting()) unit.getOtherEscortUnit()!! else null
@@ -578,7 +579,8 @@ class UnitMovement(val unit: MapUnit) {
             previousTile = tile
 
             // We can't continue, stop here.
-            if (unit.isDestroyed || unit.currentMovement - passingMovementSpent < Constants.minimumMovementEpsilon) {
+            if (unit.isDestroyed || unit.civ.ruinsManager.hasPendingChoice(unit)
+                || unit.currentMovement - passingMovementSpent < Constants.minimumMovementEpsilon) {
                 break
             }
         }

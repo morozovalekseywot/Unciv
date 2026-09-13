@@ -17,6 +17,7 @@ import com.unciv.ui.screens.pickerscreens.PantheonPickerScreen
 import com.unciv.ui.screens.pickerscreens.PolicyPickerScreen
 import com.unciv.ui.screens.pickerscreens.ReligiousBeliefsPickerScreen
 import com.unciv.ui.screens.pickerscreens.TechPickerScreen
+import com.unciv.ui.screens.worldscreen.RuinsRewardPopup
 import com.unciv.ui.screens.worldscreen.WorldScreen
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
@@ -50,6 +51,14 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
             else text
         override fun isChoice(worldScreen: WorldScreen) =
             !worldScreen.isPlayersTurn
+    },
+    PickRuinsReward("Choose a reward from ancient ruins", Color.GOLD) {
+        override val icon get() = "ImprovementIcons/Ancient ruins"
+        override fun isChoice(worldScreen: WorldScreen) = worldScreen.viewingCiv.ruinsManager.hasPendingChoice()
+        override fun action(worldScreen: WorldScreen) {
+            val choice = worldScreen.viewingCiv.ruinsManager.getPendingChoice()
+            if (choice != null) RuinsRewardPopup(worldScreen, choice).open()
+        }
     },
     PickConstruction("Pick construction", Color.CORAL) {
         override fun isChoice(worldScreen: WorldScreen) =

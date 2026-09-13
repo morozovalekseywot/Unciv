@@ -85,7 +85,7 @@ class UnitUpgradeManager(val unit: MapUnit) {
      *  It might be desirable to return `newUnit` (or `resurrectedUnit`) if needed -
      *  but then the lambda in UnitActionsUpgrade will complain and need to be forced back to Unit type.
      */
-    fun performUpgrade(upgradedUnit: BaseUnit, isFree: Boolean, goldCostOfUpgrade: Int? = null) {
+    fun performUpgrade(upgradedUnit: BaseUnit, isFree: Boolean, goldCostOfUpgrade: Int? = null, fromRuins: Boolean = false) {
         // When mashing the upgrade button, you can 'queue' 2 upgrade actions
         //  If both are performed, what you get is the unit is doubled
         //  This prevents this, since we lack another way to do so -_-'  
@@ -106,6 +106,7 @@ class UnitUpgradeManager(val unit: MapUnit) {
         }
 
         // Managed to upgrade
+        if (fromRuins) newUnit.hasUpgradedFromRuins = true
         if (!isFree) civ.addGold(-(goldCostOfUpgrade ?: getCostOfUpgrade(upgradedUnit)))
         newUnit.currentMovement = 0f
         // wake up if lost ability to fortify

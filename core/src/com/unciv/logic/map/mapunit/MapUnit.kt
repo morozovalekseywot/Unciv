@@ -78,6 +78,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
     var attacksThisTurn = 0
     var promotions = UnitPromotions()
+    /** Saved across upgrades so ruins cannot upgrade the same unit repeatedly when limited by its uniques. */
+    var hasUpgradedFromRuins = false
 
     /** Indicates if unit should be located with 'next unit' action */
     var due: Boolean = true
@@ -229,6 +231,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
         toReturn.attacksThisTurn = attacksThisTurn
         toReturn.turnsFortified = turnsFortified
         toReturn.promotions = promotions.clone(toReturn)
+        toReturn.hasUpgradedFromRuins = hasUpgradedFromRuins
         toReturn.isTransported = isTransported
         toReturn.abilityToTimesUsed = HashMap(abilityToTimesUsed)
         toReturn.religion = religion
@@ -769,6 +772,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
         newUnit.instanceName = instanceName
         newUnit.currentMovement = currentMovement
         newUnit.attacksThisTurn = attacksThisTurn
+        newUnit.hasUpgradedFromRuins = hasUpgradedFromRuins
         newUnit.isTransported = isTransported
         for (promotion in newUnit.promotions.promotions)
             if (promotion !in promotions.promotions)
@@ -846,6 +850,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
     }
 
     fun doAction() {
+        if (civ.ruinsManager.hasPendingChoice(this)) return
         if (action == null && !isAutomated()) return
         if (!hasMovement()) return  // We've already done stuff this turn, and can't do any more stuff
         if (isEscorting() && !getOtherEscortUnit()!!.hasMovement()) return

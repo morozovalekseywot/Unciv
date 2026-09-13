@@ -39,6 +39,27 @@ import kotlin.random.Random
 // Buildings, techs, policies, ancient ruins and promotions can have 'triggered' effects
 object UniqueTriggerActivation {
 
+    /** Shared by stat rewards and their UI previews. Uses local, tile-seeded randomness, so
+     *  inspecting a reward neither changes game state nor rerolls the amount when it is claimed. */
+    fun getStatGainAmount(unique: Unique, civInfo: Civilization, tile: Tile?): Int? {
+        if (unique.type != UniqueType.OneTimeGainStat && unique.type != UniqueType.OneTimeGainStatRange)
+            return null
+        val stat = Stat.safeValueOf(unique.params.last())
+        if (stat == null || stat !in Stat.statsWithCivWideField) return null
+        val firstValue = unique.params[0].toIntOrNull()
+        if (firstValue == null) return null
+        var amount = firstValue
+        if (unique.type == UniqueType.OneTimeGainStatRange) {
+            val secondValue = unique.params[1].toIntOrNull()
+            if (secondValue == null) return null
+            val random = if (tile != null) Random(tile.position.hashCode()) else Random(-550)
+            amount = (minOf(firstValue, secondValue)..maxOf(firstValue, secondValue)).random(random)
+        }
+        if (unique.isModifiedByGameSpeed())
+            amount = (amount * civInfo.gameInfo.speed.statCostModifiers[stat]!!).roundToInt()
+        return amount
+    }
+
     fun triggerUnique(
         unique: Unique,
         city: City,
@@ -800,8 +821,7 @@ object UniqueTriggerActivation {
                 ) return null
 
                 return {
-                    var statAmount = unique.params[0].toInt()
-                    if (unique.isModifiedByGameSpeed()) statAmount = (statAmount * civInfo.gameInfo.speed.statCostModifiers[stat]!!).roundToInt()
+                    val statAmount = getStatGainAmount(unique, civInfo, tile)!!
 
                     val stats = Stats().add(stat, statAmount.toFloat())
                     civInfo.addStats(stats)
@@ -828,12 +848,7 @@ object UniqueTriggerActivation {
                     || unique.params[1].toIntOrNull() == null
                 ) return null
 
-
-                val firstValue = unique.params[0].toInt()
-                val secondValue = unique.params[1].toInt()
-                val randomValue = (minOf(firstValue, secondValue)..maxOf(firstValue, secondValue)).random(tileBasedRandom)
-                val finalStatAmount = if (unique.isModifiedByGameSpeed()) (randomValue * civInfo.gameInfo.speed.statCostModifiers[stat]!!).roundToInt()
-                                            else randomValue
+                val finalStatAmount = getStatGainAmount(unique, civInfo, tile)!!
 
                 return {
                     val stats = Stats().add(stat, finalStatAmount.toFloat())

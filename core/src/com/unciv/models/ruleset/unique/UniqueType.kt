@@ -219,6 +219,8 @@ enum class UniqueType(
 
     /// Unit Abilities
 
+    StartingUnitReplacement("Starts with [unit] instead of [unit2]", UniqueTarget.Nation,
+        docDescription = "Replaces matching starting units, including difficulty bonuses, after resolving era-specific units. Does not change units produced later."),
     UnitStartingExperience("New [baseUnitFilter] units start with [amount] XP [cityFilter]", UniqueTarget.Global, UniqueTarget.FollowerBelief),
     UnitStartingPromotions("All newly-trained [baseUnitFilter] units [cityFilter] receive the [promotion] promotion", UniqueTarget.Global, UniqueTarget.FollowerBelief),
     // Todo: Lowercase the 'U' of 'Units' in this unique
@@ -546,6 +548,10 @@ enum class UniqueType(
     CanSeeInvisibleUnits("Can see invisible [mapUnitFilter] units", UniqueTarget.Unit),
 
     RuinsUpgrade("May upgrade to [unit] through ruins-like effects", UniqueTarget.Unit),
+    OneRuinsUpgrade("Can only upgrade once through ruins-like effects", UniqueTarget.Unit,
+        docDescription = "Limits special upgrades to one per unit, including after normal upgrades and saving/loading. Does not restrict normal or other free upgrades."),
+    ChooseRuinsReward("Can choose the reward from ancient ruins", UniqueTarget.Unit,
+        docDescription = "Human players choose an available ruin reward. The two most recent rewards are excluded, as with random ruins. AI and autoplay receive a random reward."),
     CanUpgrade("Can upgrade to [unit]", UniqueTarget.Unit),
 
     DestroysImprovementUponAttack("Destroys tile improvements when attacking", UniqueTarget.Unit),

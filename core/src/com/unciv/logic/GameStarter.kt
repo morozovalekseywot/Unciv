@@ -473,6 +473,11 @@ class GameStarter private constructor(
     ): BaseUnit? {
         var unit = unitParam // We want to change it and this is the easiest way to do so
         if (unit == Constants.eraSpecificUnit) unit = eraUnitReplacement
+        for (unique in civ.getMatchingUniques(UniqueType.StartingUnitReplacement)) {
+            if (unit != unique.params[1] || unique.params[0] !in ruleset.units) continue
+            unit = unique.params[0]
+            break
+        }
         if (unit == Constants.settler && Constants.settler !in ruleset.units) {
             val buildableSettlerLikeUnits =
                 settlerLikeUnits.filter {

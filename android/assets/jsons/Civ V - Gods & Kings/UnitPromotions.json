@@ -1397,13 +1397,14 @@
 	{
 		"name": "[Pathfinder] ability",
 		"uniques": [
-			"[+1] Sight"
+			"Can choose the reward from ancient ruins",
+			"Can only upgrade once through ruins-like effects"
 		]
 	},
 	{
 		"name": "[Comanche Riders] ability",
 		"uniques": [
-			"Double movement in [Plains]"
+			"[+1] Movement"
 		]
 	},
 	{

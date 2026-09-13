@@ -41,6 +41,7 @@ object NextTurnAutomation {
         if (civInfo.isBarbarian) return BarbarianAutomation(civInfo).automate()
         if (civInfo.isSpectator()) return // When there's a spectator in multiplayer games, it's processed automatically, but shouldn't be able to actually do anything
 
+        if (civInfo.isAIOrAutoPlaying()) civInfo.ruinsManager.resolvePendingChoicesAutomatically()
         respondToPopupAlerts(civInfo)
         TradeAutomation.respondToTradeRequests(civInfo, tradeAndChangeState)
 
