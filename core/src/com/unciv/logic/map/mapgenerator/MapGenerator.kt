@@ -146,7 +146,13 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             .map { unique -> TerrainOccursRange(this, unique) }
             .ifEmpty { sequenceOf(TerrainOccursRange(this)) }
 
-    fun generateMap(mapParameters: MapParameters, gameParameters: GameParameters = GameParameters(), gameInfo: GameInfo? = null): TileMap {
+    fun generateMap(
+        mapParameters: MapParameters,
+        gameParameters: GameParameters = GameParameters(),
+        gameInfo: GameInfo? = null,
+        diagnostics: MapGenerationDiagnostics? = null
+    ): TileMap {
+        diagnostics?.clear()
         val civilizations = gameInfo?.civilizations
         val isMapEditor = civilizations?.isEmpty() ?: true
 
@@ -174,8 +180,14 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             && mapParameters.mapSize.getPredefinedOrNextSmaller().radius >= MapSize.Predefined.Medium.radius
             && ruleset.modOptions.constants.pangaeaCitySiteGuarantee
 
-        if (!applyCitySiteGuarantee)
-            return generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = false).first
+        if (!applyCitySiteGuarantee) {
+            val map = generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = false).first
+            if (diagnostics != null) {
+                diagnostics.attempts.add(MapGenerationDiagnostics.Attempt(mapParameters.seed, -1, emptyList()))
+                diagnostics.selectedAttempt = 1
+            }
+            return map
+        }
 
         val totalMajorCivs = civilizations!!.count { ruleset.nations[it.civName]!!.isMajorCiv }
         val maxRetries = ruleset.modOptions.constants.maxPangaeaCitySiteRetries.coerceAtLeast(1)
@@ -184,9 +196,17 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         for (attempt in 1..maxRetries) {
             // Use a fresh seed on every retry after the first, so we don't regenerate an identical failing map
             if (attempt > 1) mapParameters.seed = System.currentTimeMillis() + attempt
-            val (map, satisfiedRegions) = generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = true)
+            val regionDiagnostics = if (diagnostics == null) null else ArrayList<MapGenerationDiagnostics.RegionResult>()
+            val (map, satisfiedRegions) = generateMapAttempt(
+                mapParameters, gameParameters, gameInfo, checkCitySites = true, regionDiagnostics = regionDiagnostics
+            )
+            if (diagnostics != null && regionDiagnostics != null)
+                diagnostics.attempts.add(MapGenerationDiagnostics.Attempt(
+                    mapParameters.seed, satisfiedRegions, regionDiagnostics.toList()
+                ))
             // Note: satisfiedRegions is -1 when checkCitySites was false, but we always pass true here
             if (satisfiedRegions >= totalMajorCivs) {
+                if (diagnostics != null) diagnostics.selectedAttempt = attempt
                 println("Pangaea city-site guarantee: attempt $attempt/$maxRetries succeeded ($satisfiedRegions/$totalMajorCivs civs satisfied)")
                 return map
             }
@@ -194,6 +214,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             if (satisfiedRegions > bestScore) {
                 bestScore = satisfiedRegions
                 bestMap = map
+                if (diagnostics != null) diagnostics.selectedAttempt = attempt
             }
         }
         // Graceful degradation: after exhausting retries, accept the best-scoring map rather than
@@ -205,7 +226,13 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
     /** Single map-generation pass.
      *  @param checkCitySites when true, the returned Int reports how many major-civ regions satisfy the
      *   city-site guarantee (see [MapRegions.countSatisfiedRegions]). When false it is always -1 (not computed). */
-    private fun generateMapAttempt(mapParameters: MapParameters, gameParameters: GameParameters, gameInfo: GameInfo?, checkCitySites: Boolean): Pair<TileMap, Int> {
+    private fun generateMapAttempt(
+        mapParameters: MapParameters,
+        gameParameters: GameParameters,
+        gameInfo: GameInfo?,
+        checkCitySites: Boolean,
+        regionDiagnostics: MutableList<MapGenerationDiagnostics.RegionResult>? = null
+    ): Pair<TileMap, Int> {
         val mapSize = mapParameters.mapSize
         val mapType = mapParameters.type
 
@@ -286,7 +313,9 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             // Only computed when the caller asked for it.
             if (checkCitySites) {
                 runAndMeasure("checkCitySites") {
-                    satisfiedRegionsCount = regions.countSatisfiedRegions(map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv)
+                    satisfiedRegionsCount = regions.countSatisfiedRegions(
+                        map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv, regionDiagnostics
+                    )
                 }
             }
         } else {

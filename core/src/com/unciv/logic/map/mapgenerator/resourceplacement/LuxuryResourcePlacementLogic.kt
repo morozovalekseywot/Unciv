@@ -326,7 +326,7 @@ object LuxuryResourcePlacementLogic {
                 candidates.shuffled(),
                 0.4f,
                 true,
-                4,
+                1, // Regional deposits leave room for other luxuries nearby (radius 1..3).
                 2
             )
         }

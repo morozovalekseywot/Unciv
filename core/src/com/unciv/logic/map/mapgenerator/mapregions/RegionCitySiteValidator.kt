@@ -1,6 +1,7 @@
 package com.unciv.logic.map.mapgenerator.mapregions
 
 import com.unciv.logic.map.tile.Tile
+import com.unciv.models.ruleset.tile.ResourceType
 
 /**
  *  Verifies that a [Region] has room for a required number of well-spaced city sites.
@@ -23,6 +24,9 @@ import com.unciv.logic.map.tile.Tile
  *
  *  A **city site** is a usable tile *inside the region* (a civ is expected to found its own cities within its own
  *  region) that also has at least [minWorkableTiles] usable tiles (from the whole map, any region) within [workRange].
+ *  Each chosen site, including the capital, must also have its own luxury deposit within [workRange], including
+ *  the city center. Deposits of the same resource type are allowed, but one tile cannot supply two chosen sites.
+ *  Luxury tiles may be outside the region or on water, just like a city's actual resource catchment.
  *  Two chosen city sites must be at least [minAerialDistance] aerial tiles apart, mirroring the in-game minimal
  *  city distance so the sites represent cities that could actually coexist. Candidates too close to any
  *  [foreignStartTiles] (other civs'/city-states' starting positions) are rejected outright.
@@ -32,7 +36,9 @@ import com.unciv.logic.map.tile.Tile
  */
 object RegionCitySiteValidator {
 
-    /** @return true if [region] can host at least [requiredSites] city sites satisfying the spacing and quality rules. */
+    /** @return true if [region] can host at least [requiredSites] city sites satisfying the spacing and quality rules.
+     *  [selectedCityLuxuries], when provided, receives the selected centers and their distinct deposits.
+     *  It is cleared on entry and may contain a partial selection when the check fails. */
     fun regionHasEnoughCitySites(
         region: Region,
         tileData: TileDataMap,
@@ -40,8 +46,10 @@ object RegionCitySiteValidator {
         minWorkableTiles: Int,
         minAerialDistance: Int,
         workRange: Int,
-        foreignStartTiles: Collection<Tile>
+        foreignStartTiles: Collection<Tile>,
+        selectedCityLuxuries: MutableMap<Tile, Tile>? = null
     ): Boolean {
+        selectedCityLuxuries?.clear()
         if (requiredSites <= 0) return true
 
         // Candidate city centers must lie within the civ's own region (a civ shouldn't need to found
@@ -57,44 +65,72 @@ object RegionCitySiteValidator {
             if (foreignStartTiles.any { tile.aerialDistanceTo(it) < minAerialDistance }) continue
 
             var workableCount = 0
+            val luxuryTiles = ArrayList<Tile>()
             tile.forEachTileInDistance(workRange) { workTile ->
                 if (workTile != tile && isUsableTile(workTile, tileData)) workableCount++
+                if (workTile.tileResource?.resourceType == ResourceType.Luxury)
+                    luxuryTiles.add(workTile)
             }
-            if (workableCount >= minWorkableTiles)
-                candidates.add(CitySiteCandidate(tile, workableCount))
+            if (workableCount >= minWorkableTiles && luxuryTiles.isNotEmpty())
+                candidates.add(CitySiteCandidate(tile, workableCount, luxuryTiles))
         }
 
         if (candidates.size < requiredSites) return false
 
         // Greedy selection: richest neighborhoods first, keeping every pair at least minAerialDistance apart.
-        // Prefer to anchor on the region's actual capital start if we have one, so we count sites reachable
-        // from where the civ really spawns.
+        // Anchor on the actual capital, which must pass the same quality and luxury checks as other sites.
         candidates.sortByDescending { it.workableCount }
-        val startTile = region.startPosition?.let { region.tileMap[it] }
-
+        val startPosition = region.startPosition
         val chosen = ArrayList<Tile>()
-        if (startTile != null && startTile in regionCandidateTiles
-            && foreignStartTiles.none { startTile.aerialDistanceTo(it) < minAerialDistance })
-            chosen.add(startTile)
+        val luxuryAssignments = HashMap<Tile, CitySiteCandidate>()
+        if (startPosition != null) {
+            val start = candidates.firstOrNull { it.tile.position == startPosition }
+            if (start == null) return false
+            assignLuxury(start, luxuryAssignments, HashSet())
+            chosen.add(start.tile)
+        }
 
         for (candidate in candidates) {
             if (chosen.size >= requiredSites) break
             if (candidate.tile in chosen) continue
             if (chosen.any { it.aerialDistanceTo(candidate.tile) < minAerialDistance }) continue
+            if (!assignLuxury(candidate, luxuryAssignments, HashSet())) continue
             chosen.add(candidate.tile)
         }
 
+        if (selectedCityLuxuries != null)
+            for ((luxuryTile, candidate) in luxuryAssignments)
+                selectedCityLuxuries[candidate.tile] = luxuryTile
         return chosen.size >= requiredSites
+    }
+
+    /** Find a distinct deposit for this site, moving earlier assignments if their sites have alternatives.
+     *  Only successful paths change assignments, so a rejected candidate leaves the chosen sites supplied.
+     *  The search is bounded by the small number of chosen city sites, not all candidate city locations. */
+    private fun assignLuxury(
+        candidate: CitySiteCandidate,
+        assignments: MutableMap<Tile, CitySiteCandidate>,
+        visited: MutableSet<Tile>
+    ): Boolean {
+        for (luxuryTile in candidate.luxuryTiles) {
+            if (!visited.add(luxuryTile)) continue
+            val previous = assignments[luxuryTile]
+            if (previous != null && !assignLuxury(previous, assignments, visited)) continue
+            assignments[luxuryTile] = candidate
+            return true
+        }
+        return false
     }
 
     private fun isUsableTile(tile: Tile, tileData: TileDataMap): Boolean {
         if (!tile.isLand || tile.isImpassible()) return false
         // A resource redeems even a bare Desert/Ice tile
         if (tile.resource != null) return true
-        val data = tileData[tile] ?: return false
+        val data = tileData[tile]
+        if (data == null) return false
         // isJunk is false for e.g. Desert+Hill/Forest/Oasis (feature-based), true only for strictly empty desert/ice/snow
         return !data.isJunk
     }
 
-    private class CitySiteCandidate(val tile: Tile, val workableCount: Int)
+    private class CitySiteCandidate(val tile: Tile, val workableCount: Int, val luxuryTiles: List<Tile>)
 }

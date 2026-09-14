@@ -5,6 +5,7 @@ import com.unciv.Constants
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.TileMap
+import com.unciv.logic.map.mapgenerator.MapGenerationDiagnostics
 import com.unciv.logic.map.mapgenerator.mapregions.MapRegions.BiasTypes.PositiveFallback
 import com.unciv.logic.map.mapgenerator.resourceplacement.LuxuryResourcePlacementLogic
 import com.unciv.logic.map.mapgenerator.resourceplacement.StrategicBonusResourcePlacementLogic
@@ -463,7 +464,11 @@ class MapRegions (val ruleset: Ruleset) {
      *  constraint (spacing to all other starts + enough well-spaced workable city sites of their own),
      *  instead of a single pass/fail. Used to pick the "best of the failed attempts" when the Pangaea
      *  city-site guarantee has to give up after exhausting its retries - see [MapGenerator][com.unciv.logic.map.mapgenerator.MapGenerator]. */
-    fun countSatisfiedRegions(tileMap: TileMap, requiredSitesPerRegion: Int): Int {
+    fun countSatisfiedRegions(
+        tileMap: TileMap,
+        requiredSitesPerRegion: Int,
+        diagnostics: MutableList<MapGenerationDiagnostics.RegionResult>? = null
+    ): Int {
         if (regions.isEmpty()) return 0
         val constants = ruleset.modOptions.constants
 
@@ -481,6 +486,9 @@ class MapRegions (val ruleset: Ruleset) {
                 it != ownStart && ownStart.aerialDistanceTo(it) < constants.citySiteMinAerialDistance
             }
             if (tooCloseToOther) {
+                diagnostics?.add(MapGenerationDiagnostics.RegionResult(
+                    region.startPosition, region.tiles.map { it.position }.toSet(), region.type, false, emptyMap()
+                ))
                 Log.debug(Tag("citySiteGuarantee"), "Capital too close to another start: %s", ownStart?.position)
                 continue
             }
@@ -488,6 +496,7 @@ class MapRegions (val ruleset: Ruleset) {
             // 2. This civ's own region must have room for enough well-spaced, workable city sites
             //    (see RegionCitySiteValidator), none of which may crowd any OTHER start.
             val foreignStarts = allStartTiles.filter { it != ownStart }
+            val cityLuxuries = if (diagnostics == null) null else HashMap<Tile, Tile>()
             val ok = RegionCitySiteValidator.regionHasEnoughCitySites(
                 region = region,
                 tileData = tileData,
@@ -495,8 +504,14 @@ class MapRegions (val ruleset: Ruleset) {
                 minWorkableTiles = constants.minWorkableTilesPerCitySite,
                 minAerialDistance = constants.citySiteMinAerialDistance,
                 workRange = constants.cityWorkRange,
-                foreignStartTiles = foreignStarts
+                foreignStartTiles = foreignStarts,
+                selectedCityLuxuries = cityLuxuries
             )
+            if (diagnostics != null && cityLuxuries != null)
+                diagnostics.add(MapGenerationDiagnostics.RegionResult(
+                    region.startPosition, region.tiles.map { it.position }.toSet(), region.type, ok,
+                    cityLuxuries.entries.associate { it.key.position to it.value.position }
+                ))
             if (!ok) {
                 Log.debug(Tag("citySiteGuarantee"), "Region failed city-site check: %s", region)
                 continue
