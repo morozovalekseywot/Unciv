@@ -35,7 +35,7 @@ object DeclareWarPlanEvaluator {
         }
 
         val civForce = civInfo.getStatForRanking(RankingType.Force)
-        val targetForce = target.getStatForRanking(RankingType.Force)
+        val targetForce = MotivationToAttackAutomation.getDefensiveMilitaryMight(civInfo, target)
         val teamCivForce = (teamCiv.getStatForRanking(RankingType.Force) - 0.8f * teamCiv.threatManager.getCombinedForceOfWarringCivs()).coerceAtLeast(100f)
 
         // A higher motivation means that we can be riskier
@@ -89,7 +89,8 @@ object DeclareWarPlanEvaluator {
             motivation -= 20f
         }
 
-        val targetForce = (target.getStatForRanking(RankingType.Force) - 0.8f * target.getCivsAtWarWith().sumOf { it.getStatForRanking(RankingType.Force) }).coerceAtLeast(100f)
+        val targetForce = (MotivationToAttackAutomation.getDefensiveMilitaryMight(civInfo, target) -
+            0.8f * target.getCivsAtWarWith().sumOf { it.getStatForRanking(RankingType.Force) }).coerceAtLeast(100f)
         val civForce = civInfo.getStatForRanking(RankingType.Force)
 
         // They need to be at least half the targets size, and we need to be stronger than the target together
@@ -127,7 +128,7 @@ object DeclareWarPlanEvaluator {
             motivation -= 50f
         }
 
-        val targetForce = target.getStatForRanking(RankingType.Force)
+        val targetForce = MotivationToAttackAutomation.getDefensiveMilitaryMight(civInfo, target)
         val civForce = civInfo.getStatForRanking(RankingType.Force)
 
         // If we have more force than all enemies and overpower this enemy then we don't need help
@@ -135,10 +136,10 @@ object DeclareWarPlanEvaluator {
 
         // They should to be at least half the targets size
         val thirdCivForce = (civToJoin.getStatForRanking(RankingType.Force) - 0.8f * civToJoin.getCivsAtWarWith().sumOf { it.getStatForRanking(RankingType.Force) }).coerceAtLeast(100f)
-        motivation += (20 * (1 - thirdCivForce / targetForce.toFloat())).coerceAtMost(40f)
+        motivation += (20 * (1 - thirdCivForce / targetForce)).coerceAtMost(40f)
 
         // If we have less relative force then the target then we have more motivation to accept
-        motivation += 20 * (1 - civForce / targetForce.toFloat()).coerceIn(-40f, 40f)
+        motivation += 20 * (1 - civForce / targetForce).coerceIn(-40f, 40f)
 
         return motivation - 20
     }
@@ -184,4 +185,3 @@ object DeclareWarPlanEvaluator {
         return motivation - 15
     }
 }
-

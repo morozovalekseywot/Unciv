@@ -298,6 +298,13 @@
           "default": 20,
           "description": "Max tiles for workboat automation search."
         },
+        "aiFriendlyTerritoryStrengthBonusWeight": {
+          "title": "AI Friendly Territory Strength Bonus Weight",
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "description": "Fraction of friendly-territory Strength bonuses included when the AI estimates a defender's military might for war decisions."
+        },
         "maxSpyRank": {
           "title": "Max Spy Rank",
           "type": "integer",

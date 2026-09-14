@@ -236,6 +236,7 @@ and city distance in another. In case of conflicts, there is no guarantee which 
 | pantheonBase                             | Int    | 10                            | [^L]  |
 | pantheonGrowth                           | Int    | 5                             | [^L]  |
 | workboatAutomationSearchMaxTiles         | Int    | 20                            | [^M]  |
+| aiFriendlyTerritoryStrengthBonusWeight   | Float  | 0.5                           | Fraction of friendly-territory Strength bonuses included in AI war strength estimates |
 | maxSpyRank                               | Int    | 3                             | [^N]  |
 | spyRankSkillPercentBonus                 | Float  | 30                            | [^O]  |
 | minimumWarDuration                       | Int    | 10                            | [^P]  |

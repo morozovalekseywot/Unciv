@@ -159,6 +159,8 @@ class ModConstants {
     // AI behaviour
     var workboatAutomationSearchMaxTiles = 37
     var minimumCityLocationTileValue = 53f
+    // Fraction of friendly-territory Strength bonuses included when the AI estimates a defender's military might
+    var aiFriendlyTerritoryStrengthBonusWeight = 0.5f
 
     // Civilization
     var minimumWarDuration = 10

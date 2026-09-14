@@ -72,4 +72,15 @@ class ModConstantsTests {
         constants.merge(options.constants)
         Assert.assertTrue(constants.additionalRegionalStrategicBalanceResources.isEmpty())
     }
+
+    @Test
+    fun aiFriendlyTerritoryStrengthBonusWeightCanBeLoadedAndMerged() {
+        val options = json().fromJson(ModOptions::class.java,
+            """{"constants":{"aiFriendlyTerritoryStrengthBonusWeight":0.75}}""")
+        val constants = ModConstants()
+
+        constants.merge(options.constants)
+
+        Assert.assertEquals(0.75f, constants.aiFriendlyTerritoryStrengthBonusWeight)
+    }
 }

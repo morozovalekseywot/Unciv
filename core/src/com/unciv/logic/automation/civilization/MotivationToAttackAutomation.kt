@@ -1,7 +1,9 @@
 package com.unciv.logic.automation.civilization
 
 import com.unciv.UncivGame
+import com.unciv.logic.MultiFilter
 import com.unciv.logic.battle.BattleDamage
+import com.unciv.logic.battle.CombatAction
 import com.unciv.logic.battle.CityCombatant
 import com.unciv.logic.battle.MapUnitCombatant
 import com.unciv.logic.city.City
@@ -14,9 +16,12 @@ import com.unciv.logic.map.MapPathing
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.nation.PersonalityValue
+import com.unciv.models.ruleset.unique.GameContext
+import com.unciv.models.ruleset.unique.Unique
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.ui.screens.victoryscreen.RankingType
+import org.jetbrains.annotations.VisibleForTesting
 import yairm210.purity.annotations.Readonly
 import kotlin.math.pow
 
@@ -160,7 +165,7 @@ object MotivationToAttackAutomation {
 
     @Readonly
     private fun calculateCombatStrengthWithProtectors(otherCiv: Civilization, baseForce: Float, civInfo: Civilization): Float {
-        var theirCombatStrength = calculateSelfCombatStrength(otherCiv, baseForce)
+        var theirCombatStrength = calculateDefensiveCombatStrength(otherCiv, baseForce, civInfo)
 
         //for city-states, also consider their protectors
         if (otherCiv.isCityState and otherCiv.cityStateFunctions.getProtectorCivs().isNotEmpty()) {
@@ -171,10 +176,105 @@ object MotivationToAttackAutomation {
     }
 
     @Readonly
+    private fun calculateDefensiveCombatStrength(civInfo: Civilization, baseForce: Float, attacker: Civilization): Float {
+        var combatStrength = getDefensiveMilitaryMight(attacker, civInfo) + baseForce
+        val capital = civInfo.getCapital()
+        if (capital != null) combatStrength += getDefendingCityStrength(capital)
+        return combatStrength
+    }
+
+    @Readonly
     private fun calculateSelfCombatStrength(civInfo: Civilization, baseForce: Float): Float {
         var ourCombatStrength = civInfo.getStatForRanking(RankingType.Force).toFloat() + baseForce
         if (civInfo.getCapital() != null) ourCombatStrength += CityCombatant(civInfo.getCapital()!!).getCityStrength()
         return ourCombatStrength
+    }
+
+    /**
+     * Estimates military might while defending friendly territory.
+     *
+     * The ranking Force already includes unit-specific Strength uniques. This only adds global
+     * friendly-territory bonuses, such as Himeji Castle, so they are not counted twice.
+     */
+    @Readonly
+    fun getDefensiveMilitaryMight(attacker: Civilization, defender: Civilization): Float {
+        val militaryMight = defender.getStatForRanking(RankingType.Force).toFloat()
+        val firstCity = defender.cities.firstOrNull()
+        if (firstCity == null) return militaryMight
+        val homeTile = firstCity.getCenterTile()
+        val defensiveUniques = ArrayList<Unique>()
+        defender.forEachMatchingUnique(UniqueType.Strength, GameContext.IgnoreConditionals) {
+            if (hasFriendlyTerritoryCombatConditional(it)) defensiveUniques.add(it)
+        }
+        if (defensiveUniques.isEmpty()) return militaryMight
+
+        var totalUnitForce = 0f
+        var bonusUnitForce = 0f
+        for (unit in defender.units.getCivUnits()) {
+            var unitForce = unit.getForceEvaluation().toFloat()
+            if (unit.baseUnit.isWaterUnit) unitForce /= 2f
+            if (unitForce == 0f) continue
+
+            totalUnitForce += unitForce
+            val state = GameContext(
+                civInfo = defender,
+                unit = unit,
+                tile = homeTile,
+                attackedTile = homeTile,
+                combatAction = CombatAction.Defend,
+                otherCiv = attacker,
+            )
+            var strengthBonus = 0f
+            for (unique in defensiveUniques) {
+                if (!unique.conditionalsApply(state)) continue
+                for (multipliedUnique in unique.getMultiplied(state)) {
+                    val bonus = multipliedUnique.params[0].toFloatOrNull()
+                    if (bonus == null) continue
+                    strengthBonus += bonus
+                }
+            }
+            bonusUnitForce += unitForce * strengthBonus / 100f
+        }
+        if (totalUnitForce == 0f) return militaryMight
+
+        val bonusWeight = defender.gameInfo.ruleset.modOptions.constants.aiFriendlyTerritoryStrengthBonusWeight
+        val weightedBonus = bonusUnitForce / totalUnitForce * bonusWeight
+        return (militaryMight * (1f + weightedBonus)).coerceAtLeast(0f)
+    }
+
+    @Readonly
+    private fun hasFriendlyTerritoryCombatConditional(unique: Unique): Boolean {
+        return unique.getModifiers(UniqueType.ConditionalFightingInTiles).any {
+            containsPositiveFriendlyTerritoryFilter(it.params[0])
+        }
+    }
+
+    @Readonly
+    private fun containsPositiveFriendlyTerritoryFilter(filter: String): Boolean {
+        if (MultiFilter.isNot(filter)) return false
+        if (MultiFilter.isAnd(filter))
+            return MultiFilter.getAndFilters(filter).any { containsPositiveFriendlyTerritoryFilter(it) }
+        return filter == "Friendly Land" || filter == "Friendly" || filter == "your"
+    }
+
+    @Readonly
+    @VisibleForTesting
+    fun getDefendingCityStrength(city: City): Float {
+        val cityCombatant = CityCombatant(city)
+        val state = GameContext(
+            civInfo = city.civ,
+            city = city,
+            tile = city.getCenterTile(),
+            ourCombatant = cityCombatant,
+            attackedTile = city.getCenterTile(),
+            combatAction = CombatAction.Defend,
+        )
+        var strengthBonus = 0f
+        city.forEachMatchingUnique(UniqueType.StrengthForCities, state) {
+            val bonus = it.params[0].toFloatOrNull()
+            if (bonus != null) strengthBonus += bonus
+        }
+        return cityCombatant.getCityStrength() * (1f + strengthBonus / 100f)
     }
 
     @Readonly
