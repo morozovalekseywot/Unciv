@@ -161,6 +161,8 @@ class ModConstants {
     var minimumCityLocationTileValue = 53f
     // Fraction of friendly-territory Strength bonuses included when the AI estimates a defender's military might
     var aiFriendlyTerritoryStrengthBonusWeight = 0.5f
+    // AI production estimate bonus (percent) per starting XP from buildings training all military units
+    var aiMilitaryProductionPercentPerStartingXP = 1f
 
     // Civilization
     var minimumWarDuration = 10

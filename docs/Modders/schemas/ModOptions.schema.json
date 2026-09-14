@@ -305,6 +305,13 @@
           "minimum": 0,
           "description": "Fraction of friendly-territory Strength bonuses included when the AI estimates a defender's military might for war decisions."
         },
+        "aiMilitaryProductionPercentPerStartingXP": {
+          "title": "AI Military Production Percent Per Starting XP",
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "AI war production estimate bonus in percent per starting XP from buildings or wonders for all military units (Military, All, all). Applied per affected city; excludes specialized unit filters and non-building sources. Set to 0 to disable."
+        },
         "maxSpyRank": {
           "title": "Max Spy Rank",
           "type": "integer",

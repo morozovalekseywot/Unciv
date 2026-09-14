@@ -17,6 +17,7 @@ import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.nation.PersonalityValue
 import com.unciv.models.ruleset.unique.GameContext
 import com.unciv.models.ruleset.unique.Unique
+import com.unciv.models.ruleset.unique.UniqueTarget
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.ui.screens.victoryscreen.RankingType
@@ -429,14 +430,41 @@ object MotivationToAttackAutomation {
         return relationshipModifier * diplomacyManager.civInfo.getPersonality().scaledFocus(PersonalityValue.Loyal)
     }
 
+    /** Starting XP from buildings improves the quality of future reinforcements in this estimate. */
     @Readonly
-    private fun getProductionRatioModifier(civInfo: Civilization, otherCiv: Civilization): Float {
+    @VisibleForTesting
+    fun getMilitaryProductionEstimate(civInfo: Civilization): Float {
+        var production = civInfo.getStatForRanking(RankingType.Production).toFloat()
+        val percentPerXP = civInfo.gameInfo.ruleset.modOptions.constants.aiMilitaryProductionPercentPerStartingXP
+        if (percentPerXP == 0f || civInfo.isDefeated()) return production
+
+        for (city in civInfo.cities) {
+            var startingXP = 0f
+            city.forEachMatchingUnique(UniqueType.UnitStartingExperience) { unique ->
+                if (unique.sourceObjectType != UniqueTarget.Building && unique.sourceObjectType != UniqueTarget.Wonder)
+                    return@forEachMatchingUnique
+                // Specialized training (e.g. ranged or naval units only) is not a general production bonus.
+                if (unique.params[0] != "Military" && unique.params[0] != "All" && unique.params[0] != "all")
+                    return@forEachMatchingUnique
+                if (!city.matchesFilter(unique.params[2])) return@forEachMatchingUnique
+                val experience = unique.params[1].toFloatOrNull()
+                if (experience != null) startingXP += experience
+            }
+            production += city.cityStats.currentCityStats.production.coerceAtLeast(0f) *
+                startingXP.coerceAtLeast(0f) * percentPerXP / 100f
+        }
+        return production
+    }
+
+    @Readonly
+    @VisibleForTesting
+    fun getProductionRatioModifier(civInfo: Civilization, otherCiv: Civilization): Float {
         // If either of our Civs are suffering from a supply deficit, our army must be too large
         // There is no easy way to check the raw production if a civ has a supply deficit
         // We might try to divide the current production by the getUnitSupplyProductionPenalty()
         // but it only is true for our turn and not the previous turn and might result in odd values
 
-        val productionRatio = civInfo.getStatForRanking(RankingType.Production).toFloat() / otherCiv.getStatForRanking(RankingType.Production).toFloat()
+        val productionRatio = getMilitaryProductionEstimate(civInfo) / getMilitaryProductionEstimate(otherCiv)
         val productionRatioModifier = when {
             productionRatio > 2f -> 10f
             productionRatio > 1.5f -> 5f

@@ -83,4 +83,15 @@ class ModConstantsTests {
 
         Assert.assertEquals(0.75f, constants.aiFriendlyTerritoryStrengthBonusWeight)
     }
+
+    @Test
+    fun militaryProductionXPWeightCanBeLoadedMergedAndSerialized() {
+        val options = json().fromJson(ModOptions::class.java,
+            """{"constants":{"aiMilitaryProductionPercentPerStartingXP":0.5}}""")
+        val constants = ModConstants()
+        constants.merge(options.constants)
+        Assert.assertEquals(0.5f, constants.aiMilitaryProductionPercentPerStartingXP, 0f)
+        val reloaded = json().fromJson(ModConstants::class.java, json().toJson(constants))
+        Assert.assertEquals(constants, reloaded)
+    }
 }

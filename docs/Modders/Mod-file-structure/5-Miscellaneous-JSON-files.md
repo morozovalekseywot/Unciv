@@ -237,6 +237,7 @@ and city distance in another. In case of conflicts, there is no guarantee which 
 | pantheonGrowth                           | Int    | 5                             | [^L]  |
 | workboatAutomationSearchMaxTiles         | Int    | 20                            | [^M]  |
 | aiFriendlyTerritoryStrengthBonusWeight   | Float  | 0.5                           | Fraction of friendly-territory Strength bonuses included in AI war strength estimates |
+| aiMilitaryProductionPercentPerStartingXP | Float | 1 | AI war production estimate bonus in percent per starting XP from buildings or wonders for all military units (`Military`, `All`, `all`). Applied to production of each affected city; specialized unit filters and non-building sources are excluded. Set to 0 to disable. |
 | maxSpyRank                               | Int    | 3                             | [^N]  |
 | spyRankSkillPercentBonus                 | Float  | 30                            | [^O]  |
 | minimumWarDuration                       | Int    | 10                            | [^P]  |
