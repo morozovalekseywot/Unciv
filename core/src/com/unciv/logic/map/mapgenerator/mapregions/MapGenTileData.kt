@@ -29,6 +29,17 @@ class MapGenTileData(val tile: Tile, val region: Region?, ruleset: Ruleset) {
         evaluate(ruleset)
     }
 
+    /** Terrain may change after this data was first built. Reset qualities before reevaluating,
+     *  without discarding resource impacts, start scores or the tile's generation region. */
+    fun refreshTerrainQualities(ruleset: Ruleset) {
+        isFood = false
+        isProd = false
+        isGood = false
+        isJunk = false
+        isTwoFromCoast = false
+        evaluate(ruleset)
+    }
+
     fun addCloseStartPenalty(penalty: Int) {
         if (closeStartPenalty == 0)
             closeStartPenalty = penalty

@@ -303,6 +303,8 @@ Partial selections on fallback maps obey the same cross-civilization constraints
 greedy search, not proof that no suitable layout exists when it fails. Resource placement and fallback
 ranking are unchanged; stricter validation can require more retries. The resource inventory can still
 list a deposit near multiple civilizations; only the `City ... -> luxury` lines denote assignments.
+Both guarantees run after final terrain/resource normalization, with refreshed terrain-quality data.
+Resources removed during normalization cannot contribute to the city-site score or its reported assignments.
 
 Legend:
 

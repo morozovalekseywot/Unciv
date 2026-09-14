@@ -502,6 +502,14 @@ class MapRegions (val ruleset: Ruleset) {
         return satisfiedCount
     }
 
+    /** Refresh after final terrain normalization, before either guarantee or the resource report.
+     *  Preserve region membership, placement impacts and start-selection data. */
+    fun refreshTileQualities(tileMap: TileMap) {
+        if (regions.isEmpty()) return
+        for (tile in tileMap.values)
+            tileData[tile]!!.refreshTerrainQualities(ruleset)
+    }
+
     fun allRegionsHaveAdditionalStrategicResources(tileMap: TileMap): Boolean =
         regions.isEmpty() || RegionalStrategicBalancePlacement.allRegionsHaveResources(tileMap, regions, tileData)
 

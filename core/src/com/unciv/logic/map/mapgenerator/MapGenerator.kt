@@ -352,16 +352,6 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             runAndMeasure("placeResourcesAndMinorCivs") {
                 regions.placeResourcesAndMinorCivs(map, civilizations.filter { ruleset.nations[it.civName]!!.isCityState })
             }
-            // Pangaea city-site guarantee: verify AFTER resources AND minor civs are placed (a resource can
-            // redeem an otherwise-bare desert/ice tile, and city-states must be counted for spacing too).
-            // Only computed when the caller asked for it.
-            if (checkCitySites) {
-                runAndMeasure("checkCitySites") {
-                    satisfiedRegionsCount = regions.countSatisfiedRegions(
-                        map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv, citySiteReports
-                    )
-                }
-            }
         } else {
             runAndMeasure("NaturalWonderGenerator") {
                 NaturalWonderGenerator(ruleset, randomness).spawnNaturalWonders(map)
@@ -378,6 +368,18 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         for (tile in map.values)
             TileNormalizer.normalizeToRuleset(tile, ruleset)
 
+        // Validate the map that will actually be returned. Normalization can remove resources and
+        // terrain features, invalidating both luxury assignments and cached neighborhood quality.
+        if (generatedRegions != null) {
+            generatedRegions.refreshTileQualities(map)
+            if (checkCitySites) {
+                runAndMeasure("checkCitySites") {
+                    satisfiedRegionsCount = generatedRegions.countSatisfiedRegions(
+                        map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv, citySiteReports
+                    )
+                }
+            }
+        }
         val additionalStrategicsSatisfied = !checkAdditionalStrategics || generatedRegions == null ||
             generatedRegions.allRegionsHaveAdditionalStrategicResources(map)
         return GenerationAttempt(map, satisfiedRegionsCount, additionalStrategicsSatisfied, generatedRegions, citySiteReports)

@@ -5,6 +5,7 @@
     <option name="VM_PARAMETERS" value="-Xmx4096m -Xms256m -XX:MaxMetaspaceSize=256m --enable-native-access=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$ProjectFileDir$/android/assets" />
     <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Copy Mod" run_configuration_type="ShConfigurationType" />
       <option name="Make" enabled="true" />
     </method>
   </configuration>
