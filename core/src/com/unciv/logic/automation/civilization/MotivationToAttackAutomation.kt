@@ -1,6 +1,5 @@
 package com.unciv.logic.automation.civilization
 
-import com.unciv.UncivGame
 import com.unciv.logic.MultiFilter
 import com.unciv.logic.battle.BattleDamage
 import com.unciv.logic.battle.CombatAction
@@ -27,6 +26,15 @@ import kotlin.math.pow
 
 object MotivationToAttackAutomation {
 
+    private const val MAX_SHORT_ATTACK_PATH_LENGTH = 16
+
+    private data class AccessibleAttackTarget(
+        val cityToAttackFrom: City,
+        val cityToAttack: City,
+        val path: List<Tile>,
+        val isLandPath: Boolean,
+    )
+
     /** Will return the motivation to attack, but might short circuit if the value is guaranteed to
      * be lower than `atLeast`. So any values below `atLeast` should not be used for comparison. */
     @Readonly
@@ -42,6 +50,7 @@ object MotivationToAttackAutomation {
         var targetCitiesWithOurCity = civInfo.threatManager.getNeighboringCitiesOfOtherCivs()
             .filter { it.second.civ == targetCiv }
             .toList()
+        var isExpansionTargetFallback = false
         if (targetCitiesWithOurCity.isEmpty() && expansionMotivation > 0f) {
             val targetCapital = targetCiv.cities.firstOrNull {
                 it.isOriginalCapital && it.foundingCivObject == targetCiv
@@ -50,8 +59,16 @@ object MotivationToAttackAutomation {
                 it.getCenterTile().aerialDistanceTo(targetCapital.getCenterTile())
             } ?: return 0f
             targetCitiesWithOurCity = listOf(Pair(closestOwnCity, targetCapital))
+            isExpansionTargetFallback = true
         }
-        val targetCities = targetCitiesWithOurCity.map { it.second }
+
+        val accessibleAttackTargets = findAccessibleAttackTargets(civInfo, targetCiv, targetCitiesWithOurCity)
+        if (!isExpansionTargetFallback) {
+            targetCitiesWithOurCity = accessibleAttackTargets.map {
+                Pair(it.cityToAttackFrom, it.cityToAttack)
+            }
+        }
+        val targetCities = targetCitiesWithOurCity.map { it.second }.distinct()
 
         if (targetCitiesWithOurCity.isEmpty()) return 0f
 
@@ -60,8 +77,8 @@ object MotivationToAttackAutomation {
 
         val baseForce = 100f
 
-        val ourCombatStrength = calculateSelfCombatStrength(civInfo, baseForce)
-        val theirCombatStrength = calculateCombatStrengthWithProtectors(targetCiv, baseForce, civInfo)
+        val ourCombatStrength = calculateOffensiveCombatStrength(civInfo, baseForce)
+        val theirCombatStrength = calculateCombatStrengthWithProtectors(targetCiv, baseForce, civInfo, targetCities)
 
         val modifiers: MutableList<Pair<String, Float>> = mutableListOf()
 
@@ -155,17 +172,22 @@ object MotivationToAttackAutomation {
         modifiers.removeAll { it.second == 0f }
         var motivationSoFar = modifiers.map { it.second }.sum()
 
-        // Short-circuit to avoid A-star
+        // Short-circuit before the potentially expensive fallback path search
         if (motivationSoFar < atLeast) return motivationSoFar
 
-        motivationSoFar += getAttackPathsModifier(civInfo, targetCiv, targetCitiesWithOurCity)
+        motivationSoFar += getAttackPathsModifier(civInfo, targetCiv, accessibleAttackTargets)
 
         return motivationSoFar
     }
 
     @Readonly
-    private fun calculateCombatStrengthWithProtectors(otherCiv: Civilization, baseForce: Float, civInfo: Civilization): Float {
-        var theirCombatStrength = calculateDefensiveCombatStrength(otherCiv, baseForce, civInfo)
+    private fun calculateCombatStrengthWithProtectors(
+        otherCiv: Civilization,
+        baseForce: Float,
+        civInfo: Civilization,
+        targetCities: Collection<City>,
+    ): Float {
+        var theirCombatStrength = calculateDefensiveCombatStrength(otherCiv, baseForce, civInfo, targetCities)
 
         //for city-states, also consider their protectors
         if (otherCiv.isCityState and otherCiv.cityStateFunctions.getProtectorCivs().isNotEmpty()) {
@@ -176,18 +198,93 @@ object MotivationToAttackAutomation {
     }
 
     @Readonly
-    private fun calculateDefensiveCombatStrength(civInfo: Civilization, baseForce: Float, attacker: Civilization): Float {
+    @VisibleForTesting
+    fun calculateDefensiveCombatStrength(
+        civInfo: Civilization,
+        baseForce: Float,
+        attacker: Civilization,
+        targetCities: Collection<City>,
+    ): Float {
         var combatStrength = getDefensiveMilitaryMight(attacker, civInfo) + baseForce
-        val capital = civInfo.getCapital()
-        if (capital != null) combatStrength += getDefendingCityStrength(capital)
+        val weakestTargetCityStrength = targetCities.minOfOrNull { getDefendingCityStrength(it) }
+        if (weakestTargetCityStrength != null) combatStrength += weakestTargetCityStrength
         return combatStrength
     }
 
     @Readonly
-    private fun calculateSelfCombatStrength(civInfo: Civilization, baseForce: Float): Float {
-        var ourCombatStrength = civInfo.getStatForRanking(RankingType.Force).toFloat() + baseForce
-        if (civInfo.getCapital() != null) ourCombatStrength += CityCombatant(civInfo.getCapital()!!).getCityStrength()
-        return ourCombatStrength
+    @VisibleForTesting
+    fun calculateOffensiveCombatStrength(civInfo: Civilization, baseForce: Float): Float =
+        civInfo.getStatForRanking(RankingType.Force).toFloat() + baseForce
+
+    /**
+     * Keeps only nearby targets that can be approached without entering another enemy city's
+     * bombardment range. The target city's own range is allowed because engaging it is the goal.
+     */
+    @Readonly
+    @VisibleForTesting
+    fun getAccessibleAttackTargets(
+        civInfo: Civilization,
+        otherCiv: Civilization,
+        targetCitiesWithOurCity: List<Pair<City, City>>,
+    ): List<Pair<City, City>> = findAccessibleAttackTargets(
+        civInfo, otherCiv, targetCitiesWithOurCity,
+    ).map { Pair(it.cityToAttackFrom, it.cityToAttack) }
+
+    @Readonly
+    private fun findAccessibleAttackTargets(
+        civInfo: Civilization,
+        otherCiv: Civilization,
+        targetCitiesWithOurCity: List<Pair<City, City>>,
+    ): List<AccessibleAttackTarget> {
+        val accessibleTargets = ArrayList<AccessibleAttackTarget>()
+        for (cities in targetCitiesWithOurCity.distinct()) {
+            val landPath = getShortAttackPath(civInfo, otherCiv, cities.first, cities.second, landOnly = true)
+            if (landPath != null) {
+                accessibleTargets.add(AccessibleAttackTarget(cities.first, cities.second, landPath, true))
+                continue
+            }
+            val amphibiousPath = getShortAttackPath(civInfo, otherCiv, cities.first, cities.second, landOnly = false)
+            if (amphibiousPath != null)
+                accessibleTargets.add(AccessibleAttackTarget(cities.first, cities.second, amphibiousPath, false))
+        }
+        return accessibleTargets
+    }
+
+    @Readonly
+    private fun getShortAttackPath(
+        civInfo: Civilization,
+        otherCiv: Civilization,
+        cityToAttackFrom: City,
+        cityToAttack: City,
+        landOnly: Boolean,
+    ): List<Tile>? {
+        val tilesUnderOtherCitiesFire = HashSet<Tile>()
+        for (city in otherCiv.cities) {
+            if (city == cityToAttack) continue
+            if (!city.getCenterTile().isExplored(civInfo)) continue
+            city.getCenterTile().forEachTileInDistance(city.getBombardRange()) {
+                tilesUnderOtherCitiesFire.add(it)
+            }
+        }
+
+        val startTile = cityToAttackFrom.getCenterTile()
+        val path = MapPathing.getConnection(
+            civInfo,
+            startTile,
+            cityToAttack.getCenterTile(),
+            { _, tile ->
+                if (tile in tilesUnderOtherCitiesFire) false
+                else if (tile.aerialDistanceTo(startTile) >= MAX_SHORT_ATTACK_PATH_LENGTH) false
+                else if (landOnly && !tile.isLand) false
+                else {
+                    val owner = tile.getOwner()
+                    !tile.isImpassible() && (owner == otherCiv || owner == null ||
+                        civInfo.diplomacyFunctions.canPassThroughTiles(owner))
+                }
+            },
+        )
+        if (path == null || path.size >= MAX_SHORT_ATTACK_PATH_LENGTH) return null
+        return path
     }
 
     /**
@@ -436,7 +533,11 @@ object MotivationToAttackAutomation {
      * @return The motivation ranging from -30 to around +10
      */
     @Readonly
-    private fun getAttackPathsModifier(civInfo: Civilization, otherCiv: Civilization, targetCitiesWithOurCity: List<Pair<City, City>>): Float {
+    private fun getAttackPathsModifier(
+        civInfo: Civilization,
+        otherCiv: Civilization,
+        accessibleAttackTargets: List<AccessibleAttackTarget>,
+    ): Float {
 
         @Readonly
         fun isTileCanMoveThrough(civInfo: Civilization, tile: Tile): Boolean {
@@ -445,42 +546,17 @@ object MotivationToAttackAutomation {
                     && (owner == otherCiv || owner == null || civInfo.diplomacyFunctions.canPassThroughTiles(owner))
         }
 
-        @Readonly
-        fun isLandTileCanMoveThrough(civInfo: Civilization, tile: Tile): Boolean {
-            return tile.isLand && isTileCanMoveThrough(civInfo, tile)
-        }
-
         val attackPaths: MutableList<List<Tile>> = mutableListOf()
         var attackPathModifiers: Float = -3f
 
-        // For each city, we want to calculate if there is an attack path to the enemy
-        for (attacksGroupedByCity in targetCitiesWithOurCity.groupBy { it.first }) {
-            val cityToAttackFrom = attacksGroupedByCity.key
-            var cityAttackValue = 0f
+        // For each city, use only its best route. Land routes are better than amphibious routes.
+        for (attacksGroupedByCity in accessibleAttackTargets.groupBy { it.cityToAttackFrom }) {
+            var bestAttackTarget = attacksGroupedByCity.value.firstOrNull { it.isLandPath }
+            if (bestAttackTarget == null) bestAttackTarget = attacksGroupedByCity.value.firstOrNull()
+            if (bestAttackTarget == null) continue
 
-            // We only want to calculate the best attack path and use it's value
-            // Land routes are clearly better than sea routes
-            for ((_, cityToAttack) in attacksGroupedByCity.value) {
-                val landAttackPath = 
-                    if (UncivGame.Current.settings.useAStarPathfinding) cityToAttackFrom.getLandAttackPath(cityToAttack, maxTurns = 17)
-                    else MapPathing.getConnection(civInfo, cityToAttackFrom.getCenterTile(), cityToAttack.getCenterTile(), ::isLandTileCanMoveThrough)
-                if (landAttackPath != null && landAttackPath.size < 16) {
-                    attackPaths.add(landAttackPath)
-                    cityAttackValue = 3f
-                    break
-                }
-
-                if (cityAttackValue > 0) continue
-
-                val landAndSeaAttackPath =
-                    if (UncivGame.Current.settings.useAStarPathfinding) cityToAttackFrom.getAmphibiousAttackPath(cityToAttack, maxTurns = 17)
-                    else MapPathing.getConnection(civInfo, cityToAttackFrom.getCenterTile(), cityToAttack.getCenterTile(), ::isTileCanMoveThrough)
-                if (landAndSeaAttackPath != null  && landAndSeaAttackPath.size < 16) {
-                    attackPaths.add(landAndSeaAttackPath)
-                    cityAttackValue += 1
-                }
-            }
-            attackPathModifiers += cityAttackValue
+            attackPaths.add(bestAttackTarget.path)
+            attackPathModifiers += if (bestAttackTarget.isLandPath) 3f else 1f
         }
 
         if (attackPaths.isEmpty()) {

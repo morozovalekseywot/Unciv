@@ -7,6 +7,7 @@ import com.unciv.testing.BaseTestRunner
 import com.unciv.testing.TestGame
 import com.unciv.ui.screens.victoryscreen.RankingType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -99,6 +100,138 @@ class MotivationToAttackAutomationTest {
         val defensiveStrength = MotivationToAttackAutomation.getDefendingCityStrength(city)
 
         assertEquals(baseStrength * 1.33f, defensiveStrength, 0.001f)
+    }
+
+    @Test
+    fun `attacking strength does not include capital strength`() {
+        val attacker = testGame.addCiv()
+        testGame.addCity(attacker, testGame.getTile(HexCoord.Zero), initialPopulation = 20)
+        testGame.addUnit("Warrior", attacker, testGame.getTile(1, 0))
+
+        val militaryMight = attacker.getStatForRanking(RankingType.Force).toFloat()
+        val attackingStrength = MotivationToAttackAutomation.calculateOffensiveCombatStrength(attacker, 100f)
+
+        assertEquals(militaryMight + 100f, attackingStrength, 0.001f)
+    }
+
+    @Test
+    fun `weakest target city is used instead of capital`() {
+        val attacker = testGame.addCiv()
+        val defender = testGame.addCiv()
+        val capital = testGame.addCity(defender, testGame.getTile(HexCoord.Zero), initialPopulation = 20)
+        val frontierCity = testGame.addCity(defender, testGame.getTile(4, 0))
+
+        val militaryMight = defender.getStatForRanking(RankingType.Force).toFloat()
+        val frontierStrength = MotivationToAttackAutomation.getDefendingCityStrength(frontierCity)
+        val strengthAgainstBothCities = MotivationToAttackAutomation.calculateDefensiveCombatStrength(
+            defender, 100f, attacker, listOf(capital, frontierCity),
+        )
+        val strengthAgainstCapital = MotivationToAttackAutomation.calculateDefensiveCombatStrength(
+            defender, 100f, attacker, listOf(capital),
+        )
+
+        assertTrue(MotivationToAttackAutomation.getDefendingCityStrength(capital) > frontierStrength)
+        assertEquals(militaryMight + 100f + frontierStrength, strengthAgainstBothCities, 0.001f)
+        assertEquals(
+            militaryMight + 100f + MotivationToAttackAutomation.getDefendingCityStrength(capital),
+            strengthAgainstCapital,
+            0.001f,
+        )
+    }
+
+    @Test
+    fun `weak city behind another city's fire zone is not an accessible target`() {
+        for (tile in testGame.tileMap.tileList)
+            testGame.setTileTerrain(tile.position, "Mountain")
+        for (x in -5..5)
+            testGame.setTileTerrain(HexCoord(x, 0), "Plains")
+
+        val attacker = testGame.addCiv()
+        val defender = testGame.addCiv()
+        val attackerCity = testGame.addCity(attacker, testGame.getTile(-4, 0))
+        val blockingCity = testGame.addCity(defender, testGame.getTile(HexCoord.Zero), initialPopulation = 20)
+        val weakCity = testGame.addCity(defender, testGame.getTile(4, 0))
+        blockingCity.getCenterTile().setExplored(attacker, true)
+        weakCity.getCenterTile().setExplored(attacker, true)
+        val blockingPair = Pair(attackerCity, blockingCity)
+        val weakPair = Pair(attackerCity, weakCity)
+
+        val accessibleTargets = MotivationToAttackAutomation.getAccessibleAttackTargets(
+            attacker, defender, listOf(blockingPair, weakPair),
+        )
+
+        assertTrue(blockingPair in accessibleTargets)
+        assertFalse(weakPair in accessibleTargets)
+    }
+
+    @Test
+    fun `two border cities can cover the entire passage to a weak city`() {
+        for (tile in testGame.tileMap.tileList)
+            testGame.setTileTerrain(tile.position, "Mountain")
+        for (x in -5..5)
+            testGame.setTileTerrain(HexCoord(x, 0), "Plains")
+        val borderCityPositions = listOf(HexCoord(-2, -2), HexCoord(3, 2))
+        val borderCityApproaches = listOf(HexCoord(-2, -1), HexCoord(3, 1))
+        for (position in borderCityPositions + borderCityApproaches)
+            testGame.setTileTerrain(position, "Plains")
+
+        val attacker = testGame.addCiv()
+        val defender = testGame.addCiv()
+        val attackerCity = testGame.addCity(attacker, testGame.getTile(-5, 0))
+        val firstBorderCity = testGame.addCity(
+            defender, testGame.getTile(borderCityPositions[0]), initialPopulation = 20,
+        )
+        val secondBorderCity = testGame.addCity(
+            defender, testGame.getTile(borderCityPositions[1]), initialPopulation = 20,
+        )
+        val weakCity = testGame.addCity(defender, testGame.getTile(5, 0))
+        val borderCities = listOf(firstBorderCity, secondBorderCity)
+        for (city in borderCities)
+            city.cityConstructions.addBuilding("Walls")
+        for (city in borderCities + weakCity)
+            city.getCenterTile().setExplored(attacker, true)
+
+        val passageTiles = (0..3).map { testGame.getTile(it, 0) }
+        for (tile in passageTiles) {
+            assertTrue(borderCities.any {
+                it.getCenterTile().aerialDistanceTo(tile) <= it.getBombardRange()
+            })
+        }
+
+        val weakPair = Pair(attackerCity, weakCity)
+        val targetPairs = borderCities.map { Pair(attackerCity, it) } + weakPair
+        val accessibleTargets = MotivationToAttackAutomation.getAccessibleAttackTargets(
+            attacker, defender, targetPairs,
+        )
+
+        assertFalse(weakPair in accessibleTargets)
+        val accessibleCities = accessibleTargets.map { it.second }.distinct()
+        val defensiveStrength = MotivationToAttackAutomation.calculateDefensiveCombatStrength(
+            defender, 100f, attacker, accessibleCities,
+        )
+        val strengthIfWeakCityWereUsed = MotivationToAttackAutomation.calculateDefensiveCombatStrength(
+            defender, 100f, attacker, listOf(weakCity),
+        )
+        assertTrue(accessibleCities.isNotEmpty())
+        assertTrue(defensiveStrength > strengthIfWeakCityWereUsed)
+    }
+
+    @Test
+    fun `weak city remains accessible when another city's fire zone can be bypassed`() {
+        val attacker = testGame.addCiv()
+        val defender = testGame.addCiv()
+        val attackerCity = testGame.addCity(attacker, testGame.getTile(-4, 0))
+        val blockingCity = testGame.addCity(defender, testGame.getTile(HexCoord.Zero), initialPopulation = 20)
+        val weakCity = testGame.addCity(defender, testGame.getTile(4, 0))
+        blockingCity.getCenterTile().setExplored(attacker, true)
+        weakCity.getCenterTile().setExplored(attacker, true)
+        val weakPair = Pair(attackerCity, weakCity)
+
+        val accessibleTargets = MotivationToAttackAutomation.getAccessibleAttackTargets(
+            attacker, defender, listOf(Pair(attackerCity, blockingCity), weakPair),
+        )
+
+        assertTrue(weakPair in accessibleTargets)
     }
 
     @Test
