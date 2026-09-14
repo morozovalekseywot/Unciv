@@ -16,6 +16,8 @@ class Region (val tileMap: TileMap, val rect: Rectangle, val continentID: Int = 
     var type = "Hybrid" // being an undefined or indeterminate type
     var luxury: String? = null
     var startPosition: HexCoord? = null
+    /** Generation-only provenance for the final console report, never stored in a saved game. */
+    val additionalStrategicPlacements = HashMap<String, HexCoord>()
     val assignedMinorCivs = ArrayList<Civilization>()
 
     var affectedByWorldWrap = false

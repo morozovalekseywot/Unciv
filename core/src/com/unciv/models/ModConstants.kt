@@ -64,12 +64,23 @@ class ModConstants {
     // Ensures each major civ's region can fit MapSize.minCitySitesPerCiv well-spaced city sites.
     // A "city site" is a land tile that is not junk (desert/ice/snow etc without a redeeming resource)
     // and has at least [minWorkableTilesPerCitySite] usable land tiles in its work range.
-    // Two city sites must be at least [citySiteMinAerialDistance] aerial tiles apart.
+    // Each site needs a distinct luxury deposit outside foreign starts' work ranges.
+    // Sites and deposits are selected jointly across civilizations, including partial failed regions.
+    // Two city sites must be at least [citySiteMinAerialDistance] aerial tiles apart;
+    // actual minimum city distance and foreign capital settlement protection also apply.
     // If a Pangaea map cannot satisfy this, up to [maxPangaeaCitySiteRetries] full regenerations are attempted.
     var pangaeaCitySiteGuarantee = true
     var minWorkableTilesPerCitySite = 7
     var citySiteMinAerialDistance = 5
-    var maxPangaeaCitySiteRetries = 20
+    // Also caps retries for additional regional strategic balance on other map types.
+    var maxPangaeaCitySiteRetries = 30
+
+    // With Strategic Balance enabled, top up these resources with one small deposit per major
+    // civ's accessible settlement area, but only if that area has none already. This is separate
+    // from StrategicBalanceResource, which places large deposits near every capital.
+    // Replace the list in ModOptions.json to extend it or use [] to disable it.
+    // Missing names and non-strategic resources are ignored for compatibility with other rulesets.
+    var additionalRegionalStrategicBalanceResources = arrayListOf("Uranium")
 
     // "Inland start" bonus (see RegionStartFinder.evaluateTileForStart), active under the same conditions
     // as the city-site guarantee above. Nudges a civ's capital away from the border with OTHER civs'

@@ -73,6 +73,7 @@ object StrategicBonusResourcePlacementLogic {
         placeMinorDepositsOnLand(bonusMultiplier, landList, tileData, strategicResources, fallbackStrategic, totalPlaced)
         placeMajorDepositsOnWater(ruleset, ruleLists, totalPlaced, tileData, fallbackStrategic)
         ensureMinimumResourcesPerCiv(strategicResources, regions, totalPlaced, ruleset, landList, tileMap, tileData)
+        RegionalStrategicBalancePlacement.placeResources(tileMap, regions, tileData)
         placeBonusResources(ruleset, ruleLists, tileData, bonusMultiplier, tileMap)
         placeBonusInThirdRingOfStart(regions, ruleset, tileMap, tileData)
     }

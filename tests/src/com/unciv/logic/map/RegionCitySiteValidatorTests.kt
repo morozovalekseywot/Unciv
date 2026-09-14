@@ -159,6 +159,14 @@ class RegionCitySiteValidatorTests {
     }
 
     @Test
+    fun foreignLuxuryExclusionUsesModdedWorkRange() {
+        addLuxury(2)
+        val foreign = listOf(testGame.getTile(5, 0))
+        assertTrue(validates(workRange = 2, foreignStarts = foreign))
+        assertFalse(validates(workRange = 3, foreignStarts = foreign))
+    }
+
+    @Test
     fun regionWithoutAssignedCapitalStillRequiresDistinctDeposits() {
         region.startPosition = null
         addSite(5)

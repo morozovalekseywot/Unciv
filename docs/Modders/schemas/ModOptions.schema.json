@@ -75,6 +75,12 @@
       "type": "object",
       "description": "A collection of constants used internally in Unciv. This is the only structure that is merged field by field from mods, not overwritten, so you can change XP from Barbarians in one mod and city distance in another. In case of conflicts, there is no guarantee which mod wins, only that default values are ignored.",
       "properties": {
+        "additionalRegionalStrategicBalanceResources": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["Uranium"],
+          "description": "With Strategic Balance enabled, add one small deposit of each listed strategic resource to a major civilization's accessible settlement area if none is present. Replaces the entire list; [] disables it. Unknown names and non-strategic resources are ignored. Natural terrain restrictions and existing resources are preserved. Missing accessible resources trigger retries within the existing limit, but fallback selection still ranks maps only by city sites and may return a map missing resources."
+        },
         "maxXPfromBarbarians": {
           "title": "Max XP from Barbarians",
           "type": "integer",

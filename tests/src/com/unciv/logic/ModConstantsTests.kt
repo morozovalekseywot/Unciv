@@ -1,6 +1,8 @@
 package com.unciv.logic
 
 import com.unciv.models.ModConstants
+import com.unciv.models.ruleset.ModOptions
+import com.unciv.json.json
 import com.unciv.testing.BaseTestRunner
 import org.junit.Assert
 import org.junit.Test
@@ -48,5 +50,26 @@ class ModConstantsTests {
         val instance2 = ModConstants().apply { cityStrengthBase = 6.0 }
         instance1.merge(instance2)
         Assert.assertEquals(instance1.cityStrengthBase, 6.0, 1.0.ulp)
+    }
+
+    @Test
+    fun regionalResourceListCanBeLoadedMergedAndSerialized() {
+        val options = json().fromJson(ModOptions::class.java,
+            """{"constants":{"additionalRegionalStrategicBalanceResources":["Uranium","Aluminum","Coal"]}}""")
+        val constants = ModConstants()
+        constants.merge(options.constants)
+        Assert.assertEquals(listOf("Uranium", "Aluminum", "Coal"), constants.additionalRegionalStrategicBalanceResources)
+        val reloaded = json().fromJson(ModConstants::class.java, json().toJson(constants))
+        Assert.assertEquals(constants, reloaded)
+        Assert.assertEquals(constants.hashCode(), reloaded.hashCode())
+    }
+
+    @Test
+    fun emptyRegionalResourceListOverridesTheDefault() {
+        val constants = ModConstants()
+        val options = json().fromJson(ModOptions::class.java,
+            """{"constants":{"additionalRegionalStrategicBalanceResources":[]}}""")
+        constants.merge(options.constants)
+        Assert.assertTrue(constants.additionalRegionalStrategicBalanceResources.isEmpty())
     }
 }

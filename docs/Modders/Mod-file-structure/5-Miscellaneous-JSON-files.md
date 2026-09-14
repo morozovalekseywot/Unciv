@@ -221,6 +221,7 @@ and city distance in another. In case of conflicts, there is no guarantee which 
 | minimalCityDistanceOnDifferentContinents | Int    | 2                             | [^D]  |
 | foreignCapitalSettlementProtectionRadius | Int    | 5                             | [^X]  |
 | cityExpansionAnchorMaturityTurns         | Int    | 20                            | [^Y]  |
+| additionalRegionalStrategicBalanceResources        | List of Strings | ["Uranium"]          | [Regional strategic balance](#regional-strategic-balance) |
 | unitUpgradeCost                          | Object | [See below](#unitupgradecost) | [^J]  |
 | naturalWonderCountMultiplier             | Float  | 0.124                         | [^E]  |
 | naturalWonderCountAddedConstant          | Float  | 0.1                           | [^E]  |
@@ -244,6 +245,63 @@ and city distance in another. In case of conflicts, there is no guarantee which 
 | goldGiftMultiplier                       | Float  | 1                             | [^T]  |
 | goldGiftTradeMultiplier                  | Float  | 0.8                           | [^U]  |
 | goldGiftDegradationMultiplier            | Float  | 1.0                           | [^V]  |
+
+#### Regional strategic balance
+
+When Strategic Balance is enabled (either the checkbox or resource preset), the generator tops up each
+major civilization's settlement area with one **small** deposit of every resource in
+`additionalRegionalStrategicBalanceResources`, but only when no accessible deposit of that resource already exists.
+This is separate from `Guaranteed with Strategic Balance resource option`, which supplies **large**
+deposits near capitals. The existing unique's behavior is unchanged.
+
+For example, in `ModOptions.json`:
+
+```json
+{
+    "constants": {
+        "additionalRegionalStrategicBalanceResources": ["Uranium", "Aluminum", "Coal"]
+    }
+}
+```
+
+The default list contains only Uranium. An empty list disables regional top-ups. A non-default list
+replaces the whole list during constants merging; it is not appended. Unknown resource names and
+non-strategic resources are ignored, so rulesets without Uranium do not need to define it.
+
+Accessible deposits must be on land connected to the capital inside its generation region, outside
+foreign starts' work ranges, and in work range of the capital or a viable expansion site. Expansion
+sites use the city-site quality/luxury checks and must respect spacing from the capital and foreign
+starts. This reserves an opportunity to obtain the resource, not a guarantee for every future city layout.
+
+Placement runs after ordinary strategic resources and luxuries, before bonuses, on all region-generated
+game maps, not just Pangaea. It uses the resource's small-deposit amount for the chosen resource setting.
+It never replaces an existing resource, changes terrain, or bypasses natural-generation restrictions.
+If no suitable free tile exists, it logs the failed top-up and leaves the region unchanged, without
+forcing an invalid deposit. Missing accessible resources trigger another map-generation attempt,
+sharing the existing `maxPangaeaCitySiteRetries` limit (30 by default), even on non-Pangaea game maps.
+A map succeeds only when all enabled checks pass. After exhausting attempts, fallback ranking remains
+**city-site score only**, keeping the first map on ties; there is no preference for strategic resources.
+Where the Pangaea city-site check is disabled, fallback retains the initial map. Thus a fallback map
+can still lack an additional resource. Existing saves and map-editor generation are unaffected.
+
+After selecting the final game map, the console prints a per-civilization report with axial `(x, y)`
+coordinates: capital, the validator's selected city sites and assigned luxuries, strategic deposits and
+amounts, regional luxury type, and other luxury types. Additional strategic resources are marked as
+already present, added by regional balance, or missing. An alternative viable city site is explicitly
+labelled when the resource is accessible there but not from the selected city set. Regional membership
+and work-range overlap are not ownership guarantees. Only the returned map is reported, including
+when it is an earlier attempt chosen after exhausting retries; the report is not saved with the game.
+
+The Pangaea city-site check selects a shared layout for all major civilizations: capitals first,
+then expansion sites in rounds. Selected cities must respect spacing across region borders and
+the peace-time protection around foreign capitals. Each city is matched to a distinct luxury deposit
+across the whole selected layout (duplicate resource **types** are allowed). Deposits within
+`cityWorkRange` of any foreign start, including city-states, cannot satisfy this requirement.
+Later assignments may move earlier cities to alternative deposits; the report shows the final matching.
+Partial selections on fallback maps obey the same cross-civilization constraints. This is a bounded
+greedy search, not proof that no suitable layout exists when it fails. Resource placement and fallback
+ranking are unchanged; stricter validation can require more retries. The resource inventory can still
+list a deposit near multiple civilizations; only the `City ... -> luxury` lines denote assignments.
 
 Legend:
 

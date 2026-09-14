@@ -6,6 +6,7 @@ import com.unciv.UncivGame
 import com.unciv.logic.GameInfo
 import com.unciv.logic.map.*
 import com.unciv.logic.map.mapgenerator.mapregions.MapRegions
+import com.unciv.logic.map.mapgenerator.resourceplacement.RegionalStrategicBalancePlacement
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.Counter
 import com.unciv.models.metadata.GameParameters
@@ -174,54 +175,93 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
 
         // The Pangaea city-site guarantee only kicks in for actual games (not the map editor),
         // on Pangaea maps of at least Medium size, and only when the ruleset opts in.
-        // For every other case we generate exactly once, with no behavioural change whatsoever.
         val applyCitySiteGuarantee = !isMapEditor
             && mapParameters.type == MapType.pangaea
             && mapParameters.mapSize.getPredefinedOrNextSmaller().radius >= MapSize.Predefined.Medium.radius
             && ruleset.modOptions.constants.pangaeaCitySiteGuarantee
 
-        if (!applyCitySiteGuarantee) {
-            val map = generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = false).first
+        val checkAdditionalStrategics = !isMapEditor && mapParameters.type != MapType.empty
+            && RegionalStrategicBalancePlacement.isEnabled(mapParameters, ruleset)
+
+        if (!applyCitySiteGuarantee && !checkAdditionalStrategics) {
+            val generated = generateMapAttempt(mapParameters, gameParameters, gameInfo, checkCitySites = false)
             if (diagnostics != null) {
                 diagnostics.attempts.add(MapGenerationDiagnostics.Attempt(mapParameters.seed, -1, emptyList()))
                 diagnostics.selectedAttempt = 1
             }
-            return map
+            printSelectedMapReport(generated, 1, false, diagnostics)
+            return generated.map
         }
 
         val totalMajorCivs = civilizations!!.count { ruleset.nations[it.civName]!!.isMajorCiv }
         val maxRetries = ruleset.modOptions.constants.maxPangaeaCitySiteRetries.coerceAtLeast(1)
-        var bestMap: TileMap? = null
-        var bestScore = -1
+        var bestGeneration: GenerationAttempt? = null
+        var bestAttempt = 0
+        var bestScore = Int.MIN_VALUE
         for (attempt in 1..maxRetries) {
             // Use a fresh seed on every retry after the first, so we don't regenerate an identical failing map
             if (attempt > 1) mapParameters.seed = System.currentTimeMillis() + attempt
             val regionDiagnostics = if (diagnostics == null) null else ArrayList<MapGenerationDiagnostics.RegionResult>()
-            val (map, satisfiedRegions) = generateMapAttempt(
-                mapParameters, gameParameters, gameInfo, checkCitySites = true, regionDiagnostics = regionDiagnostics
+            val generated = generateMapAttempt(
+                mapParameters, gameParameters, gameInfo, checkCitySites = applyCitySiteGuarantee,
+                regionDiagnostics = regionDiagnostics, checkAdditionalStrategics = checkAdditionalStrategics
             )
+            val (map, satisfiedRegions, additionalStrategicsSatisfied) = generated
             if (diagnostics != null && regionDiagnostics != null)
                 diagnostics.attempts.add(MapGenerationDiagnostics.Attempt(
-                    mapParameters.seed, satisfiedRegions, regionDiagnostics.toList()
+                    mapParameters.seed, satisfiedRegions, regionDiagnostics.toList(), additionalStrategicsSatisfied
                 ))
-            // Note: satisfiedRegions is -1 when checkCitySites was false, but we always pass true here
-            if (satisfiedRegions >= totalMajorCivs) {
+            val citySitesSatisfied = !applyCitySiteGuarantee || satisfiedRegions >= totalMajorCivs
+            if (citySitesSatisfied && additionalStrategicsSatisfied) {
                 if (diagnostics != null) diagnostics.selectedAttempt = attempt
-                println("Pangaea city-site guarantee: attempt $attempt/$maxRetries succeeded ($satisfiedRegions/$totalMajorCivs civs satisfied)")
+                println("Map guarantees: attempt $attempt/$maxRetries succeeded " +
+                    "(city-site score=$satisfiedRegions/$totalMajorCivs, additional strategics satisfied)")
+                printSelectedMapReport(generated, attempt, false, diagnostics)
                 return map
             }
-            println("Pangaea city-site guarantee: attempt $attempt/$maxRetries failed ($satisfiedRegions/$totalMajorCivs civs satisfied), regenerating map")
+            println("Map guarantees: attempt $attempt/$maxRetries failed " +
+                "(city-site score=$satisfiedRegions/$totalMajorCivs, additional strategics=$additionalStrategicsSatisfied), regenerating map")
+            // Preserve the original fallback ranking: city-site score only, first map wins ties.
+            // Without the Pangaea city-site check every score is -1, so retain the initial map.
             if (satisfiedRegions > bestScore) {
                 bestScore = satisfiedRegions
-                bestMap = map
+                bestGeneration = generated
+                bestAttempt = attempt
                 if (diagnostics != null) diagnostics.selectedAttempt = attempt
             }
         }
         // Graceful degradation: after exhausting retries, accept the best-scoring map rather than
         // crash on a possibly-impossible request (bad user input, see AGENTS.md "crash early" nuance).
-        println("Pangaea city-site guarantee: giving up after $maxRetries attempts, using best map found ($bestScore/$totalMajorCivs civs satisfied)")
-        return bestMap!!
+        println("Map guarantees: giving up after $maxRetries attempts, using best city-site map " +
+            "(score=$bestScore/$totalMajorCivs; additional resources may still be missing)")
+        printSelectedMapReport(bestGeneration!!, bestAttempt, true, diagnostics)
+        return bestGeneration.map
     }
+
+    private fun printSelectedMapReport(
+        generated: GenerationAttempt,
+        attempt: Int,
+        fallback: Boolean,
+        diagnostics: MapGenerationDiagnostics?
+    ) {
+        val regions = generated.regions
+        if (regions == null) return // Map editor and empty maps have no regional assignments.
+        val header = "Map generation report: attempt=$attempt, seed=${generated.seed}, fallback=$fallback"
+        val report = header + "\n" + regions.describeGeneration(generated.map, generated.citySiteReports)
+        if (diagnostics != null) diagnostics.selectedMapReport = report
+        println(report)
+    }
+
+    private data class GenerationAttempt(
+        val map: TileMap,
+        val satisfiedRegions: Int,
+        val additionalStrategicsSatisfied: Boolean = true,
+        // Retain only the current and best attempts until selection, never all maps in diagnostics.
+        val regions: MapRegions? = null,
+        val citySiteReports: List<MapGenerationDiagnostics.RegionResult> = emptyList(),
+        // Snapshot before the shared MapParameters is reseeded for a later attempt.
+        val seed: Long = map.mapParameters.seed
+    )
 
     /** Single map-generation pass.
      *  @param checkCitySites when true, the returned Int reports how many major-civ regions satisfy the
@@ -231,8 +271,9 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         gameParameters: GameParameters,
         gameInfo: GameInfo?,
         checkCitySites: Boolean,
-        regionDiagnostics: MutableList<MapGenerationDiagnostics.RegionResult>? = null
-    ): Pair<TileMap, Int> {
+        regionDiagnostics: MutableList<MapGenerationDiagnostics.RegionResult>? = null,
+        checkAdditionalStrategics: Boolean = false
+    ): GenerationAttempt {
         val mapSize = mapParameters.mapSize
         val mapType = mapParameters.type
 
@@ -255,7 +296,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
                 tile.setTerrainTransients()
             }
 
-            return Pair(map, -1)
+            return GenerationAttempt(map, -1)
         }
 
         if (consoleTimings) debug("\nMapGenerator run with parameters %s", mapParameters)
@@ -292,9 +333,12 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         val civilizations = gameInfo?.civilizations
         val isMapEditor = civilizations?.isEmpty() ?: true
         var satisfiedRegionsCount = -1
+        var generatedRegions: MapRegions? = null
+        val citySiteReports = if (regionDiagnostics == null) ArrayList() else regionDiagnostics
         if (! isMapEditor) {
             map.gameInfo = gameInfo
             val regions = MapRegions(ruleset)
+            generatedRegions = regions
             runAndMeasure("generateRegions") {
                 regions.generateRegions(map, civilizations.count { ruleset.nations[it.civName]!!.isMajorCiv })
             }
@@ -314,7 +358,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             if (checkCitySites) {
                 runAndMeasure("checkCitySites") {
                     satisfiedRegionsCount = regions.countSatisfiedRegions(
-                        map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv, regionDiagnostics
+                        map, mapParameters.mapSize.getPredefinedOrNextSmaller().minCitySitesPerCiv, citySiteReports
                     )
                 }
             }
@@ -334,7 +378,9 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         for (tile in map.values)
             TileNormalizer.normalizeToRuleset(tile, ruleset)
 
-        return Pair(map, satisfiedRegionsCount)
+        val additionalStrategicsSatisfied = !checkAdditionalStrategics || generatedRegions == null ||
+            generatedRegions.allRegionsHaveAdditionalStrategicResources(map)
+        return GenerationAttempt(map, satisfiedRegionsCount, additionalStrategicsSatisfied, generatedRegions, citySiteReports)
     }
     
     private fun flipTopBottom(vector: HexCoord): HexCoord = HexCoord.of(-vector.y, -vector.x)

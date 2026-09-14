@@ -25,8 +25,9 @@ import com.unciv.models.ruleset.tile.ResourceType
  *  A **city site** is a usable tile *inside the region* (a civ is expected to found its own cities within its own
  *  region) that also has at least [minWorkableTiles] usable tiles (from the whole map, any region) within [workRange].
  *  Each chosen site, including the capital, must also have its own luxury deposit within [workRange], including
- *  the city center. Deposits of the same resource type are allowed, but one tile cannot supply two chosen sites.
- *  Luxury tiles may be outside the region or on water, just like a city's actual resource catchment.
+ *  the city center. Deposits of the same resource type are allowed, but one tile cannot supply two chosen sites,
+ *  even in different regions. Luxury tiles may be outside the region or on water, but not within a foreign
+ *  start's work range. All regions share one selection so their proposed cities can coexist.
  *  Two chosen city sites must be at least [minAerialDistance] aerial tiles apart, mirroring the in-game minimal
  *  city distance so the sites represent cities that could actually coexist. Candidates too close to any
  *  [foreignStartTiles] (other civs'/city-states' starting positions) are rejected outright.
@@ -52,56 +53,119 @@ object RegionCitySiteValidator {
         selectedCityLuxuries?.clear()
         if (requiredSites <= 0) return true
 
-        // Candidate city centers must lie within the civ's own region (a civ shouldn't need to found
-        // in someone else's territory), but their *workable neighborhood* is evaluated map-wide.
+        val allStarts = foreignStartTiles.toMutableSet()
+        val startPosition = region.startPosition
+        if (startPosition != null) allStarts.add(region.tileMap[startPosition])
+        val selection = selectCitySites(listOf(region), tileData, requiredSites, minWorkableTiles,
+            minAerialDistance, workRange, allStarts).single()
+        selectedCityLuxuries?.putAll(selection)
+        return selection.size >= requiredSites
+    }
+
+    /** Bounded greedy selection, not an exhaustive search. Reserve all capitals before expanding in
+     *  rounds, rather than filling one region before considering the next region's expansion sites.
+     *  Luxury matching is shared across regions and can move earlier assignments to alternatives.
+     *  Results (including partial failed regions) are mutually compatible and in input region order.
+     *  Materialize them only after matching finishes: later sites may change earlier assignments. */
+    fun selectCitySites(
+        regions: List<Region>,
+        tileData: TileDataMap,
+        requiredSites: Int,
+        minWorkableTiles: Int,
+        minAerialDistance: Int,
+        workRange: Int,
+        allStartTiles: Collection<Tile>,
+        foreignCapitalProtectionRadius: Int = 0
+    ): List<Map<Tile, Tile>> {
+        if (requiredSites <= 0) return regions.map { emptyMap() }
+        val candidates = regions.map { region ->
+            val foreignCapitals = regions.asSequence().filter { it != region }
+                .mapNotNull { it.startPosition }.map { region.tileMap[it] }.toList()
+            findCandidates(region, tileData, minWorkableTiles, minAerialDistance, workRange,
+                allStartTiles.filter { it.position != region.startPosition })
+                .filter { candidate -> candidate.tile.position == region.startPosition ||
+                    foreignCapitals.none { candidate.tile.aerialDistanceTo(it) <= foreignCapitalProtectionRadius } }
+                .sortedWith(compareByDescending<CitySiteCandidate> { it.workableCount }
+                    .thenBy { it.tile.position.x }.thenBy { it.tile.position.y })
+        }
+        val chosenByRegion = regions.map { ArrayList<CitySiteCandidate>() }
+        val chosenCenters = HashMap<Tile, Region>()
+        val assignments = HashMap<Tile, CitySiteCandidate>()
+        val canExpand = BooleanArray(regions.size)
+        for ((index, region) in regions.withIndex()) {
+            val startPosition = region.startPosition
+            if (startPosition == null) {
+                canExpand[index] = true
+                continue
+            }
+            val capital = candidates[index].firstOrNull { it.tile.position == startPosition }
+            if (capital == null) continue
+            chosenCenters[capital.tile] = region
+            if (!assignLuxury(capital, assignments, HashSet(), chosenCenters)) {
+                chosenCenters.remove(capital.tile)
+                continue
+            }
+            chosenByRegion[index].add(capital)
+            canExpand[index] = true
+        }
+        // Each successful iteration adds a city; at most regions.size * requiredSites are selected.
+        do {
+            var addedCity = false
+            for (index in regions.indices) {
+                if (!canExpand[index] || chosenByRegion[index].size >= requiredSites) continue
+                for (candidate in candidates[index]) {
+                    if (candidate.tile in chosenCenters) continue
+                    if (chosenCenters.keys.any { it.aerialDistanceTo(candidate.tile) < minAerialDistance }) continue
+                    // Founding a city must not consume a deposit already promised to another civilization.
+                    val previous = assignments[candidate.tile]
+                    if (previous != null && previous.region != candidate.region) continue
+                    chosenCenters[candidate.tile] = candidate.region
+                    if (!assignLuxury(candidate, assignments, HashSet(), chosenCenters)) {
+                        chosenCenters.remove(candidate.tile)
+                        continue
+                    }
+                    chosenByRegion[index].add(candidate)
+                    addedCity = true
+                    break
+                }
+            }
+        } while (addedCity)
+        val cityLuxuries = assignments.entries.associate { it.value.tile to it.key }
+        return chosenByRegion.map { chosen -> chosen.associate { it.tile to cityLuxuries.getValue(it.tile) } }
+    }
+
+    /** Shared quality checks for city-site validation and regional strategic-resource access.
+     *  Centers must be inside the region; their workable neighborhoods may cross its border. */
+    internal fun findCandidates(
+        region: Region,
+        tileData: TileDataMap,
+        minWorkableTiles: Int,
+        minAerialDistance: Int,
+        workRange: Int,
+        foreignStartTiles: Collection<Tile>
+    ): ArrayList<CitySiteCandidate> {
         val regionCandidateTiles = HashSet<Tile>()
         for (tile in region.tiles)
             if (isUsableTile(tile, tileData)) regionCandidateTiles.add(tile)
 
-        if (regionCandidateTiles.size < requiredSites) return false
+        val foreignCatchment = HashSet<Tile>()
+        for (start in foreignStartTiles)
+            start.forEachTileInDistance(workRange) { foreignCatchment.add(it) }
 
         val candidates = ArrayList<CitySiteCandidate>()
         for (tile in regionCandidateTiles) {
             if (foreignStartTiles.any { tile.aerialDistanceTo(it) < minAerialDistance }) continue
-
             var workableCount = 0
             val luxuryTiles = ArrayList<Tile>()
             tile.forEachTileInDistance(workRange) { workTile ->
                 if (workTile != tile && isUsableTile(workTile, tileData)) workableCount++
-                if (workTile.tileResource?.resourceType == ResourceType.Luxury)
+                if (workTile.tileResource?.resourceType == ResourceType.Luxury && workTile !in foreignCatchment)
                     luxuryTiles.add(workTile)
             }
             if (workableCount >= minWorkableTiles && luxuryTiles.isNotEmpty())
-                candidates.add(CitySiteCandidate(tile, workableCount, luxuryTiles))
+                candidates.add(CitySiteCandidate(tile, workableCount, luxuryTiles, region))
         }
-
-        if (candidates.size < requiredSites) return false
-
-        // Greedy selection: richest neighborhoods first, keeping every pair at least minAerialDistance apart.
-        // Anchor on the actual capital, which must pass the same quality and luxury checks as other sites.
-        candidates.sortByDescending { it.workableCount }
-        val startPosition = region.startPosition
-        val chosen = ArrayList<Tile>()
-        val luxuryAssignments = HashMap<Tile, CitySiteCandidate>()
-        if (startPosition != null) {
-            val start = candidates.firstOrNull { it.tile.position == startPosition }
-            if (start == null) return false
-            assignLuxury(start, luxuryAssignments, HashSet())
-            chosen.add(start.tile)
-        }
-
-        for (candidate in candidates) {
-            if (chosen.size >= requiredSites) break
-            if (candidate.tile in chosen) continue
-            if (chosen.any { it.aerialDistanceTo(candidate.tile) < minAerialDistance }) continue
-            if (!assignLuxury(candidate, luxuryAssignments, HashSet())) continue
-            chosen.add(candidate.tile)
-        }
-
-        if (selectedCityLuxuries != null)
-            for ((luxuryTile, candidate) in luxuryAssignments)
-                selectedCityLuxuries[candidate.tile] = luxuryTile
-        return chosen.size >= requiredSites
+        return candidates
     }
 
     /** Find a distinct deposit for this site, moving earlier assignments if their sites have alternatives.
@@ -110,12 +174,15 @@ object RegionCitySiteValidator {
     private fun assignLuxury(
         candidate: CitySiteCandidate,
         assignments: MutableMap<Tile, CitySiteCandidate>,
-        visited: MutableSet<Tile>
+        visited: MutableSet<Tile>,
+        chosenCenters: Map<Tile, Region>
     ): Boolean {
         for (luxuryTile in candidate.luxuryTiles) {
+            val centerRegion = chosenCenters[luxuryTile]
+            if (centerRegion != null && centerRegion != candidate.region) continue
             if (!visited.add(luxuryTile)) continue
             val previous = assignments[luxuryTile]
-            if (previous != null && !assignLuxury(previous, assignments, visited)) continue
+            if (previous != null && !assignLuxury(previous, assignments, visited, chosenCenters)) continue
             assignments[luxuryTile] = candidate
             return true
         }
@@ -132,5 +199,5 @@ object RegionCitySiteValidator {
         return !data.isJunk
     }
 
-    private class CitySiteCandidate(val tile: Tile, val workableCount: Int, val luxuryTiles: List<Tile>)
+    internal class CitySiteCandidate(val tile: Tile, val workableCount: Int, val luxuryTiles: List<Tile>, val region: Region)
 }

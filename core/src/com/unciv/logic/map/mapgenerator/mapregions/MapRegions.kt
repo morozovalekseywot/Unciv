@@ -6,8 +6,10 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.TileMap
 import com.unciv.logic.map.mapgenerator.MapGenerationDiagnostics
+import com.unciv.logic.map.mapgenerator.MapGenerationReport
 import com.unciv.logic.map.mapgenerator.mapregions.MapRegions.BiasTypes.PositiveFallback
 import com.unciv.logic.map.mapgenerator.resourceplacement.LuxuryResourcePlacementLogic
+import com.unciv.logic.map.mapgenerator.resourceplacement.RegionalStrategicBalancePlacement
 import com.unciv.logic.map.mapgenerator.resourceplacement.StrategicBonusResourcePlacementLogic
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.metadata.GameParameters
@@ -460,8 +462,8 @@ class MapRegions (val ruleset: Ruleset) {
     fun allRegionsHaveEnoughCitySites(tileMap: TileMap, requiredSitesPerRegion: Int): Boolean =
         countSatisfiedRegions(tileMap, requiredSitesPerRegion) == regions.size
 
-    /** Like [allRegionsHaveEnoughCitySites] but returns how many major-civ regions actually satisfy every
-     *  constraint (spacing to all other starts + enough well-spaced workable city sites of their own),
+    /** Like [allRegionsHaveEnoughCitySites] but returns how many major-civ regions satisfy every
+     *  constraint in a shared selection (compatible city centers and distinct luxury deposits),
      *  instead of a single pass/fail. Used to pick the "best of the failed attempts" when the Pangaea
      *  city-site guarantee has to give up after exhausting its retries - see [MapGenerator][com.unciv.logic.map.mapgenerator.MapGenerator]. */
     fun countSatisfiedRegions(
@@ -475,39 +477,17 @@ class MapRegions (val ruleset: Ruleset) {
         // All starting positions on the map: major civ capitals (regions) AND minor civs/city-states.
         // tileMap.startingLocationsByNation already contains every nation placed so far (major + minor).
         val allStartTiles = tileMap.startingLocationsByNation.values.flatten().toSet()
-        val majorStartTiles = regions.mapNotNull { it.startPosition?.let { pos -> tileMap[pos] } }
+        val selections = RegionCitySiteValidator.selectCitySites(
+            regions, tileData, requiredSitesPerRegion, constants.minWorkableTilesPerCitySite,
+            maxOf(constants.citySiteMinAerialDistance, constants.minimalCityDistance + 1),
+            constants.cityWorkRange, allStartTiles, constants.foreignCapitalSettlementProtectionRadius
+        )
 
         var satisfiedCount = 0
-        for (region in regions) {
-            val ownStart = region.startPosition?.let { tileMap[it] }
-
-            // 1. This civ's capital must not be too close to ANY other start (major or minor/city-state).
-            val tooCloseToOther = ownStart != null && allStartTiles.any {
-                it != ownStart && ownStart.aerialDistanceTo(it) < constants.citySiteMinAerialDistance
-            }
-            if (tooCloseToOther) {
-                diagnostics?.add(MapGenerationDiagnostics.RegionResult(
-                    region.startPosition, region.tiles.map { it.position }.toSet(), region.type, false, emptyMap()
-                ))
-                Log.debug(Tag("citySiteGuarantee"), "Capital too close to another start: %s", ownStart?.position)
-                continue
-            }
-
-            // 2. This civ's own region must have room for enough well-spaced, workable city sites
-            //    (see RegionCitySiteValidator), none of which may crowd any OTHER start.
-            val foreignStarts = allStartTiles.filter { it != ownStart }
-            val cityLuxuries = if (diagnostics == null) null else HashMap<Tile, Tile>()
-            val ok = RegionCitySiteValidator.regionHasEnoughCitySites(
-                region = region,
-                tileData = tileData,
-                requiredSites = requiredSitesPerRegion,
-                minWorkableTiles = constants.minWorkableTilesPerCitySite,
-                minAerialDistance = constants.citySiteMinAerialDistance,
-                workRange = constants.cityWorkRange,
-                foreignStartTiles = foreignStarts,
-                selectedCityLuxuries = cityLuxuries
-            )
-            if (diagnostics != null && cityLuxuries != null)
+        for ((index, region) in regions.withIndex()) {
+            val cityLuxuries = selections[index]
+            val ok = cityLuxuries.size >= requiredSitesPerRegion
+            if (diagnostics != null)
                 diagnostics.add(MapGenerationDiagnostics.RegionResult(
                     region.startPosition, region.tiles.map { it.position }.toSet(), region.type, ok,
                     cityLuxuries.entries.associate { it.key.position to it.value.position }
@@ -518,9 +498,16 @@ class MapRegions (val ruleset: Ruleset) {
             }
             satisfiedCount++
         }
-        // Suppress unused warning for majorStartTiles kept for potential future diagnostics/logging
-        Log.debug(Tag("citySiteGuarantee"), "%d/%d regions satisfied (%d major starts placed)", satisfiedCount, regions.size, majorStartTiles.size)
+        Log.debug(Tag("citySiteGuarantee"), "%d/%d regions satisfied by a shared city-site selection", satisfiedCount, regions.size)
         return satisfiedCount
+    }
+
+    fun allRegionsHaveAdditionalStrategicResources(tileMap: TileMap): Boolean =
+        regions.isEmpty() || RegionalStrategicBalancePlacement.allRegionsHaveResources(tileMap, regions, tileData)
+
+    internal fun describeGeneration(tileMap: TileMap, citySites: List<MapGenerationDiagnostics.RegionResult>): String {
+        if (regions.isEmpty()) return "No major-civilization regions"
+        return MapGenerationReport.describe(tileMap, regions, tileData, citySites)
     }
 
     fun placeResourcesAndMinorCivs(tileMap: TileMap, minorCivs: List<Civilization>) {
