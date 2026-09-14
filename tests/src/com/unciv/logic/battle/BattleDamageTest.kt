@@ -142,6 +142,34 @@ class BattleDamageTest {
     }
 
     @Test
+    fun `should retrieve defence improvement modifier in friendly territory`() {
+        // given
+        val defenderCity = testGame.addCity(defenderCiv, testGame.getTile(-2, 0))
+        defaultDefenderTile.setOwningCity(defenderCity)
+        defaultDefenderTile.setImprovement("Citadel")
+
+        // when
+        val defenceModifiers = BattleDamage.getDefenceModifiers(MapUnitCombatant(defaultAttackerUnit), MapUnitCombatant(defaultDefenderUnit), defaultAttackerTile)
+
+        // then
+        assertEquals(100, defenceModifiers["Tile"])
+    }
+
+    @Test
+    fun `should not retrieve defence improvement modifier in enemy territory`() {
+        // given
+        val attackerCity = testGame.addCity(attackerCiv, testGame.getTile(-2, 0))
+        defaultDefenderTile.setOwningCity(attackerCity)
+        defaultDefenderTile.setImprovement("Citadel")
+
+        // when
+        val defenceModifiers = BattleDamage.getDefenceModifiers(MapUnitCombatant(defaultAttackerUnit), MapUnitCombatant(defaultDefenderUnit), defaultAttackerTile)
+
+        // then
+        assertEquals(0, defenceModifiers["Tile"])
+    }
+
+    @Test
     fun `should not retrieve defence terrain modifiers when unit doesn't get them`() {
         // given
         val defenderTile = testGame.getTile(HexCoord.Zero)

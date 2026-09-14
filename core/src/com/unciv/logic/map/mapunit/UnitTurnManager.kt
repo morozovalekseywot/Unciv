@@ -75,7 +75,8 @@ class UnitTurnManager(val unit: MapUnit) {
 
     private fun doCitadelDamage() {
         // Check for Citadel damage - note: 'Damage does not stack with other Citadels'
-        val (citadelTile, damage) = unit.currentTile.neighbors
+        val tilesInRange = sequenceOf(unit.currentTile) + unit.currentTile.neighbors
+        val (citadelTile, damage) = tilesInRange
             .filter {
                 it.getOwner() != null &&
                     it.getUnpillagedImprovement() != null &&
