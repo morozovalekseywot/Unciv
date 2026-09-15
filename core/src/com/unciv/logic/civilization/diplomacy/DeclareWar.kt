@@ -28,6 +28,9 @@ object DeclareWar {
         val otherCiv = diplomacyManager.otherCiv
         val otherCivDiplomacy = diplomacyManager.otherCivDiplomacy()
 
+        if (!civInfo.isAtWarWith(otherCiv))
+            civInfo.gameInfo.warSimulationLog?.record(civInfo, otherCiv, declareWarReason)
+
         if (otherCiv.isCityState && declareWarReason.warType == WarType.DirectWar)
             handleCityStateDirectAttack(diplomacyManager)
 
@@ -380,4 +383,3 @@ enum class WarType {
  * the allyCiv needs to be given.
  */
 class DeclareWarReason(val warType: WarType, val allyCiv: Civilization? = null)
-

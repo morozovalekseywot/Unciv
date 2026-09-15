@@ -38,6 +38,9 @@ tasks {
 
         // Forward latency-test save file path to the test JVM
         System.getProperty("unciv.nextTurnSaveFile")?.let { systemProperty("unciv.nextTurnSaveFile", it) }
+        for (key in System.getProperties().stringPropertyNames().filter { it.startsWith("unciv.warSimulation.") })
+            systemProperty(key, System.getProperty(key))
+        if (System.getProperty("unciv.warSimulation.enabled") == "true") maxHeapSize = "1g"
     }
 }
 

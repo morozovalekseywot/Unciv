@@ -34,6 +34,13 @@ internal class DebugTab(
         addCheckbox("Show tile image locations", DebugUtils::SHOW_TILE_IMAGE_LOCATIONS, updateWorld = true)
 
         val curGameInfo = game.gameInfo
+        if (curGameInfo != null && GUI.isWorldLoaded()) {
+            val warEvaluationsButton = "AI war evaluations".toTextButton()
+            warEvaluationsButton.onClick {
+                WarMotivationPopup(optionsPopup.stageToShowOn, curGameInfo).open(force = true)
+            }
+            add(warEvaluationsButton).colspan(2).row()
+        }
         if (curGameInfo != null) {
             addCheckbox("God mode (current game)", curGameInfo.gameParameters::godMode)
         }

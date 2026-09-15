@@ -357,23 +357,44 @@ object DiplomacyAutomation {
         return motivation > 0
     }
 
-    internal fun declareWar(civInfo: Civilization) {
-        if (civInfo.cities.isEmpty() || civInfo.diplomacy.isEmpty()) return
-        if (civInfo.getPersonality()[PersonalityValue.DeclareWar] == 0f) return
-        if (civInfo.getHappiness() <= 0) return
+    /** First failed prerequisite, shared with the on-demand war diagnostics. */
+    @Readonly
+    internal fun getWarDeclarationBlocker(civInfo: Civilization): String? {
+        if (civInfo.cities.isEmpty()) return "The attacker has no cities"
+        if (civInfo.diplomacy.isEmpty()) return "The attacker has no diplomatic contacts"
+        if (civInfo.getPersonality()[PersonalityValue.DeclareWar] == 0f) return "War declarations are disabled by personality"
+        if (civInfo.getHappiness() <= 0) return "The attacker has no positive happiness"
 
         val ourMilitaryUnits = civInfo.units.getCivUnits().count { !it.isCivilian() }
-        if (ourMilitaryUnits < civInfo.cities.size) return
-        if (ourMilitaryUnits < 4) return  // to stop AI declaring war at the beginning of games when everyone isn't set up well enough
+        if (ourMilitaryUnits < civInfo.cities.size) return "The attacker has fewer military units than cities"
+        if (ourMilitaryUnits < 4) return "The attacker has fewer than four military units"
         // For mods we can't check the number of cities, so we will check the population instead.
-        if (civInfo.cities.sumOf { it.population.population } < 12) return // FAR too early for that what are you thinking!
+        if (civInfo.cities.sumOf { it.population.population } < 12) return "The attacker has less than twelve population"
+        return null
+    }
+
+    @Readonly
+    internal fun getWarTargetBlocker(civInfo: Civilization, target: Civilization): String? {
+        if (target == civInfo) return "A civilization cannot attack itself"
+        if (target.isDefeated()) return "The target is defeated"
+        if (target.cities.isEmpty()) return "The target has no cities"
+        val diplomacy = civInfo.getDiplomacyManager(target)
+        if (diplomacy == null) return "Civilizations have not met"
+        if (!diplomacy.canDeclareWar()) {
+            if (civInfo.isAtWarWith(target)) return "Already at war"
+            if (diplomacy.turnsToPeaceTreaty() != 0) return "A peace treaty prevents declaring war"
+            return "War cannot be declared"
+        }
+        if (target.cities.none { civInfo.hasExplored(it.getCenterTile()) }) return "No target cities have been discovered"
+        return null
+    }
+
+    internal fun declareWar(civInfo: Civilization) {
+        if (getWarDeclarationBlocker(civInfo) != null) return
 
         //evaluate war
         val targetCivs = civInfo.getKnownCivs()
-            .filterNot {
-                it.isDefeated() || it == civInfo || it.cities.isEmpty() || !civInfo.getDiplomacyManager(it)!!.canDeclareWar()
-                    || it.cities.none { city -> civInfo.hasExplored(city.getCenterTile()) }
-            }
+            .filter { getWarTargetBlocker(civInfo, it) == null }
         // If the AI declares war on a civ without knowing the location of any cities, 
         // it'll just keep amassing an army and not sending it anywhere, and end up at a massive disadvantage.
 

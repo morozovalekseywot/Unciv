@@ -30,14 +30,14 @@ object DeclareWarTargetAutomation {
     private fun tryDeclareWarWithPlan(civInfo: Civilization, target: Civilization, motivation: Float): Boolean {
 
         if (!target.isCityState) {
-            if (motivation > 5 && tryTeamWar(civInfo, target, motivation)) return true
+            if (motivation > DeclareWarPlanEvaluator.TEAM_WAR_CHECK_THRESHOLD && tryTeamWar(civInfo, target, motivation)) return true
 
-            if (motivation >= 15 && tryJoinWar(civInfo, target, motivation)) return true
+            if (motivation >= DeclareWarPlanEvaluator.JOIN_WAR_CHECK_THRESHOLD && tryJoinWar(civInfo, target, motivation)) return true
         }
 
-        if (motivation >= 20 && declareWar(civInfo, target, motivation)) return true
+        if (motivation >= DeclareWarPlanEvaluator.DECLARE_WAR_THRESHOLD && declareWar(civInfo, target, motivation)) return true
 
-        if (motivation >= 15 && prepareWar(civInfo, target, motivation)) return true
+        if (motivation >= DeclareWarPlanEvaluator.PREPARE_WAR_THRESHOLD && prepareWar(civInfo, target, motivation)) return true
 
         return false
     }
@@ -125,4 +125,3 @@ object DeclareWarTargetAutomation {
     }
 
 }
-

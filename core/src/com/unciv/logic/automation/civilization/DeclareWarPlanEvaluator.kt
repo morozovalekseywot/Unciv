@@ -12,6 +12,33 @@ import yairm210.purity.annotations.Readonly
  * Contains the logic for evaluating how we want to declare war on another civ.
  */
 object DeclareWarPlanEvaluator {
+    const val TEAM_WAR_CHECK_THRESHOLD = 5f
+    const val JOIN_WAR_CHECK_THRESHOLD = 15f
+    const val PREPARE_WAR_THRESHOLD = 15f
+    const val DECLARE_WAR_THRESHOLD = 20f
+    const val SURPRISE_WAR_THRESHOLD = 40f
+
+    /** Read-only explanation of the standalone branch, not a prediction of the chosen target or plan. */
+    @Readonly
+    fun getStandaloneWarReadiness(civInfo: Civilization, target: Civilization, motivation: Float): WarMotivationReport.StandaloneWarReadiness {
+        if (DiplomacyAutomation.getWarDeclarationBlocker(civInfo) != null
+            || DiplomacyAutomation.getWarTargetBlocker(civInfo, target) != null)
+            return WarMotivationReport.StandaloneWarReadiness.Blocked
+        if (motivation >= DECLARE_WAR_THRESHOLD && evaluateDeclareWarPlan(civInfo, target, motivation) > 0f)
+            return WarMotivationReport.StandaloneWarReadiness.CanDeclare
+
+        val diplomacy = civInfo.getDiplomacyManager(target)!!
+        if (diplomacy.hasFlag(DiplomacyFlags.WaryOf) && diplomacy.getFlag(DiplomacyFlags.WaryOf) < 0) {
+            if (motivation < DECLARE_WAR_THRESHOLD)
+                return WarMotivationReport.StandaloneWarReadiness.PreparingBelowThreshold
+            return WarMotivationReport.StandaloneWarReadiness.Preparing
+        }
+        if (motivation >= PREPARE_WAR_THRESHOLD && evaluateStartPreparingWarPlan(civInfo, target, motivation) > 0f)
+            return WarMotivationReport.StandaloneWarReadiness.CanPrepare
+        if (motivation > PREPARE_WAR_THRESHOLD && diplomacy.hasFlag(DiplomacyFlags.WaryOf))
+            return WarMotivationReport.StandaloneWarReadiness.PreparationBlocked
+        return WarMotivationReport.StandaloneWarReadiness.InsufficientMotivation
+    }
 
     /**
      * How much motivation [civInfo] has to do a team war with [teamCiv] against [target].
@@ -35,7 +62,7 @@ object DeclareWarPlanEvaluator {
         }
 
         val civForce = civInfo.getStatForRanking(RankingType.Force)
-        val targetForce = MotivationToAttackAutomation.getDefensiveMilitaryMight(civInfo, target)
+        val targetForce = MotivationToAttackAutomation.getDefensiveCoalitionMilitaryMight(civInfo, target, teamCiv)
         val teamCivForce = (teamCiv.getStatForRanking(RankingType.Force) - 0.8f * teamCiv.threatManager.getCombinedForceOfWarringCivs()).coerceAtLeast(100f)
 
         // A higher motivation means that we can be riskier
@@ -89,7 +116,7 @@ object DeclareWarPlanEvaluator {
             motivation -= 20f
         }
 
-        val targetForce = (MotivationToAttackAutomation.getDefensiveMilitaryMight(civInfo, target) -
+        val targetForce = (MotivationToAttackAutomation.getDefensiveCoalitionMilitaryMight(civInfo, target, civToJoin) -
             0.8f * target.getCivsAtWarWith().sumOf { it.getStatForRanking(RankingType.Force) }).coerceAtLeast(100f)
         val civForce = civInfo.getStatForRanking(RankingType.Force)
 
@@ -128,7 +155,7 @@ object DeclareWarPlanEvaluator {
             motivation -= 50f
         }
 
-        val targetForce = MotivationToAttackAutomation.getDefensiveMilitaryMight(civInfo, target)
+        val targetForce = MotivationToAttackAutomation.getDefensiveCoalitionMilitaryMight(civInfo, target, civToJoin)
         val civForce = civInfo.getStatForRanking(RankingType.Force)
 
         // If we have more force than all enemies and overpower this enemy then we don't need help
@@ -164,7 +191,7 @@ object DeclareWarPlanEvaluator {
             return motivation - turnsToWait * 3
         }
 
-        return motivation - 40
+        return motivation - SURPRISE_WAR_THRESHOLD
     }
 
     /**
@@ -182,6 +209,6 @@ object DeclareWarPlanEvaluator {
         val diploManager = civInfo.getDiplomacyManager(target)!!
         if (diploManager.hasFlag(DiplomacyFlags.WaryOf)) return 0f
 
-        return motivation - 15
+        return motivation - PREPARE_WAR_THRESHOLD
     }
 }

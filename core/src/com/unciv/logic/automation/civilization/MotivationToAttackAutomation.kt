@@ -1,6 +1,7 @@
 package com.unciv.logic.automation.civilization
 
 import com.unciv.logic.MultiFilter
+import com.unciv.logic.automation.unit.CityLocationTileRanker
 import com.unciv.logic.battle.BattleDamage
 import com.unciv.logic.battle.CombatAction
 import com.unciv.logic.battle.CityCombatant
@@ -9,6 +10,7 @@ import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.diplomacy.DiplomacyFlags
 import com.unciv.logic.civilization.diplomacy.DiplomacyManager
+import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
 import com.unciv.logic.civilization.diplomacy.RelationshipLevel
 import com.unciv.logic.map.BFS
 import com.unciv.logic.map.MapPathing
@@ -22,6 +24,7 @@ import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.ui.screens.victoryscreen.RankingType
 import org.jetbrains.annotations.VisibleForTesting
+import yairm210.purity.annotations.LocalState
 import yairm210.purity.annotations.Readonly
 import kotlin.math.pow
 
@@ -44,6 +47,40 @@ object MotivationToAttackAutomation {
         targetCiv: Civilization,
         atLeast: Float,
         expansionMotivation: Float = 0f
+    ): Float = evaluateMotivation(civInfo, targetCiv, atLeast, expansionMotivation, null)
+
+    /** Full calculation for the debug UI. Declaration eligibility is separate from motivation. */
+    fun getWarMotivationReport(civInfo: Civilization, targetCiv: Civilization): WarMotivationReport {
+        val report = WarMotivationReport()
+        val attackerBlocker = DiplomacyAutomation.getWarDeclarationBlocker(civInfo)
+        val targetBlocker = DiplomacyAutomation.getWarTargetBlocker(civInfo, targetCiv)
+        if (attackerBlocker != null) report.declarationBlockers.add(attackerBlocker)
+        if (targetBlocker != null) report.declarationBlockers.add(targetBlocker)
+        if (report.declarationBlockers.isNotEmpty())
+            report.standaloneWarReadiness = WarMotivationReport.StandaloneWarReadiness.Blocked
+        if (civInfo == targetCiv || civInfo.getDiplomacyManager(targetCiv) == null
+            || civInfo.cities.isEmpty() || targetCiv.cities.isEmpty()
+            || civInfo.isDefeated() || targetCiv.isDefeated()) return report
+
+        val expansionMotivation = CityLocationTileRanker.getExpansionWarMotivation(civInfo, targetCiv)
+        val motivation = evaluateMotivation(civInfo, targetCiv, Float.NEGATIVE_INFINITY, expansionMotivation, report)
+        report.motivation = motivation
+        report.standaloneWarReadiness = when {
+            report.rejectionReason != null || report.declarationBlockers.isNotEmpty() -> WarMotivationReport.StandaloneWarReadiness.Blocked
+            report.warPlanningSkippedBeforePaths -> WarMotivationReport.StandaloneWarReadiness.SkippedBeforePaths
+            else -> DeclareWarPlanEvaluator.getStandaloneWarReadiness(civInfo, targetCiv, motivation)
+        }
+        return report
+    }
+
+    // The optional report belongs exclusively to this evaluation; normal AI calls pass null.
+    @Readonly
+    private fun evaluateMotivation(
+        civInfo: Civilization,
+        targetCiv: Civilization,
+        atLeast: Float,
+        expansionMotivation: Float,
+        @LocalState report: WarMotivationReport?,
     ): Float {
         val diplomacyManager = civInfo.getDiplomacyManager(targetCiv)!!
         val personality = civInfo.getPersonality()
@@ -55,15 +92,22 @@ object MotivationToAttackAutomation {
         if (targetCitiesWithOurCity.isEmpty() && expansionMotivation > 0f) {
             val targetCapital = targetCiv.cities.firstOrNull {
                 it.isOriginalCapital && it.foundingCivObject == targetCiv
-            } ?: return 0f
+            } ?: return rejectOrZero(report, "No original capital for the expansion target")
             val closestOwnCity = civInfo.cities.minByOrNull {
                 it.getCenterTile().aerialDistanceTo(targetCapital.getCenterTile())
-            } ?: return 0f
+            } ?: return rejectOrZero(report, "The attacker has no cities")
             targetCitiesWithOurCity = listOf(Pair(closestOwnCity, targetCapital))
             isExpansionTargetFallback = true
         }
 
         val accessibleAttackTargets = findAccessibleAttackTargets(civInfo, targetCiv, targetCitiesWithOurCity)
+        if (report != null) {
+            report.expansionFallback = isExpansionTargetFallback
+            val accessibleCities = accessibleAttackTargets.map { it.cityToAttack }.toSet()
+            if (!isExpansionTargetFallback)
+                report.addExcludedCities(targetCitiesWithOurCity.map { it.second }.distinct()
+                    .filter { it !in accessibleCities }.map { it.name })
+        }
         if (!isExpansionTargetFallback) {
             targetCitiesWithOurCity = accessibleAttackTargets.map {
                 Pair(it.cityToAttackFrom, it.cityToAttack)
@@ -71,15 +115,47 @@ object MotivationToAttackAutomation {
         }
         val targetCities = targetCitiesWithOurCity.map { it.second }.distinct()
 
-        if (targetCitiesWithOurCity.isEmpty()) return 0f
+        if (targetCitiesWithOurCity.isEmpty()) return rejectOrZero(report, "No accessible target cities")
+
+        if (report != null) {
+            report.addTargetCities(targetCities.map { Pair(it.name, getDefendingCityStrength(it)) })
+        }
 
         if (targetCities.all { hasNoUnitsThatCanAttackCityWithoutDying(civInfo, it) })
-            return 0f
+            return rejectOrZero(report, "No military unit can survive an attack on any target city")
 
         val baseForce = 100f
 
         val ourCombatStrength = calculateOffensiveCombatStrength(civInfo, baseForce)
-        val theirCombatStrength = calculateCombatStrengthWithProtectors(targetCiv, baseForce, civInfo, targetCities)
+        val defensivePactForce = getDefensivePactSupport(civInfo, targetCiv)
+        val theirOwnCombatStrength = calculateCombatStrengthWithProtectors(targetCiv, baseForce, civInfo, targetCities)
+        val theirCombatStrength = theirOwnCombatStrength + defensivePactForce
+        val otherEnemiesStrength = 0.8f * civInfo.threatManager.getCombinedForceOfWarringCivs()
+        if (report != null) {
+            val defenderForce = targetCiv.getStatForRanking(RankingType.Force).toFloat()
+            val defensiveMight = getDefensiveMilitaryMight(civInfo, targetCiv)
+            val weakestCity = targetCities.minBy { getDefendingCityStrength(it) }
+            report.weakestCity = weakestCity.name
+            val cityStrength = getDefendingCityStrength(weakestCity)
+            val baseCityStrength = CityCombatant(weakestCity).getCityStrength().toFloat()
+            report.addInputs(listOf(
+                "Base force per side" to baseForce,
+                "Attacker military force" to (ourCombatStrength - baseForce),
+                "Defender military force" to defenderForce,
+                "Friendly territory defense adjustment" to (defensiveMight - defenderForce),
+                "Friendly territory bonus weight" to targetCiv.gameInfo.ruleset.modOptions.constants.aiFriendlyTerritoryStrengthBonusWeight,
+                "Weakest city base strength" to baseCityStrength,
+                "City defensive strength adjustment" to (cityStrength - baseCityStrength),
+                "Weakest target city strength" to cityStrength,
+                "City-state protector force" to (theirOwnCombatStrength - baseForce - defensiveMight - cityStrength),
+                "Defensive pact ally force" to defensivePactForce,
+                "Other enemies force adjustment" to otherEnemiesStrength,
+                "Attacker total combat strength" to ourCombatStrength,
+                "Defender total combat strength" to (theirCombatStrength + otherEnemiesStrength),
+                "Attacker score" to civInfo.getStatForRanking(RankingType.Score).toFloat(),
+                "Defender score" to targetCiv.getStatForRanking(RankingType.Score).toFloat(),
+            ))
+        }
 
         val modifiers: MutableList<Pair<String, Float>> = mutableListOf()
 
@@ -88,12 +164,10 @@ object MotivationToAttackAutomation {
 
         modifiers.add(Pair("Expansion opportunity", expansionMotivation))
 
-        modifiers.add(Pair("Relative combat strength", getCombatStrengthModifier(civInfo, targetCiv, ourCombatStrength, theirCombatStrength + 0.8f * civInfo.threatManager.getCombinedForceOfWarringCivs())))
+        modifiers.add(Pair("Relative combat strength", getCombatStrengthModifier(civInfo, targetCiv, ourCombatStrength, theirCombatStrength + otherEnemiesStrength, report)))
         // TODO: For now this will be a very high value because the AI can't handle multiple fronts, this should be changed later though
         modifiers.add(Pair("Concurrent wars", -civInfo.getCivsAtWarWith().count { it.isMajorCiv() && it != targetCiv } * 20f))
         modifiers.add(Pair("Their concurrent wars", targetCiv.getCivsAtWarWith().count { it.isMajorCiv() } * 3f))
-
-        modifiers.add(Pair("Their allies", getDefensivePactAlliesScore(targetCiv, civInfo, baseForce, ourCombatStrength)))
 
         if (civInfo.threatManager.getNeighboringCivilizations().none { it != targetCiv && it.isMajorCiv()
                         && civInfo.getDiplomacyManager(it)!!.isRelationshipLevelLT(RelationshipLevel.Friend) })
@@ -106,11 +180,12 @@ object MotivationToAttackAutomation {
             if (civInfo.stats.getUnitSupplyDeficit() != 0) {
                 modifiers.add(Pair("Over unit supply", (civInfo.stats.getUnitSupplyDeficit() * 2f).coerceAtMost(20f)))
             } else if (targetCiv.stats.getUnitSupplyDeficit() == 0 && !targetCiv.isCityState) {
-                modifiers.add(Pair("Relative production", getProductionRatioModifier(civInfo, targetCiv)))
+                modifiers.add(Pair("Relative production", getProductionRatioModifier(civInfo, targetCiv, report)))
             }
         }
 
         val minTargetCityDistance = targetCitiesWithOurCity.minOf { it.second.getCenterTile().aerialDistanceTo(it.first.getCenterTile()) }
+        if (report != null) report.addInput("Distance to nearest target city" to minTargetCityDistance.toFloat())
         // Defensive civs should avoid fighting civilizations that are farther away and don't pose a threat
         modifiers.add(Pair("Far away cities", when {
             minTargetCityDistance > 20 -> -10f
@@ -169,16 +244,27 @@ object MotivationToAttackAutomation {
 
         modifiers.add(Pair("War with allies", getAlliedWarMotivation(civInfo, targetCiv)))
 
-        // Purely for debugging, remove modifiers that don't have an effect
+        // Retain zero contributions in the report to distinguish them from skipped comparisons.
+        if (report != null) report.addComponents(modifiers)
         modifiers.removeAll { it.second == 0f }
         var motivationSoFar = modifiers.map { it.second }.sum()
+        // DeclareWar's normal query uses threshold 0, even though the report evaluates paths in full.
+        if (report != null) report.warPlanningSkippedBeforePaths = motivationSoFar < 0f
 
         // Short-circuit before the potentially expensive fallback path search
         if (motivationSoFar < atLeast) return motivationSoFar
 
-        motivationSoFar += getAttackPathsModifier(civInfo, targetCiv, accessibleAttackTargets)
+        val pathsModifier = getAttackPathsModifier(civInfo, targetCiv, accessibleAttackTargets)
+        if (report != null) report.addComponent("Attack paths" to pathsModifier)
+        motivationSoFar += pathsModifier
 
         return motivationSoFar
+    }
+
+    @Readonly
+    private fun rejectOrZero(@LocalState report: WarMotivationReport?, reason: String): Float {
+        if (report != null) return report.reject(reason)
+        return 0f
     }
 
     @Readonly
@@ -433,7 +519,10 @@ object MotivationToAttackAutomation {
     /** Starting XP from buildings improves the quality of future reinforcements in this estimate. */
     @Readonly
     @VisibleForTesting
-    fun getMilitaryProductionEstimate(civInfo: Civilization): Float {
+    fun getMilitaryProductionEstimate(civInfo: Civilization): Float = getMilitaryProductionEstimate(civInfo, null)
+
+    @Readonly
+    private fun getMilitaryProductionEstimate(civInfo: Civilization, @LocalState report: WarMotivationReport?): Float {
         var production = civInfo.getStatForRanking(RankingType.Production).toFloat()
         val percentPerXP = civInfo.gameInfo.ruleset.modOptions.constants.aiMilitaryProductionPercentPerStartingXP
         if (percentPerXP == 0f || civInfo.isDefeated()) return production
@@ -450,21 +539,40 @@ object MotivationToAttackAutomation {
                 val experience = unique.params[1].toFloatOrNull()
                 if (experience != null) startingXP += experience
             }
-            production += city.cityStats.currentCityStats.production.coerceAtLeast(0f) *
+            val cityProduction = city.cityStats.currentCityStats.production.coerceAtLeast(0f)
+            val bonus = cityProduction *
                 startingXP.coerceAtLeast(0f) * percentPerXP / 100f
+            production += bonus
+            if (report != null) report.addTraining(WarMotivationReport.CityTraining(
+                civInfo.civName, city.name, cityProduction, startingXP.coerceAtLeast(0f), bonus,
+            ))
         }
         return production
     }
 
     @Readonly
     @VisibleForTesting
-    fun getProductionRatioModifier(civInfo: Civilization, otherCiv: Civilization): Float {
+    fun getProductionRatioModifier(civInfo: Civilization, otherCiv: Civilization): Float =
+        getProductionRatioModifier(civInfo, otherCiv, null)
+
+    @Readonly
+    private fun getProductionRatioModifier(civInfo: Civilization, otherCiv: Civilization, @LocalState report: WarMotivationReport?): Float {
         // If either of our Civs are suffering from a supply deficit, our army must be too large
         // There is no easy way to check the raw production if a civ has a supply deficit
         // We might try to divide the current production by the getUnitSupplyProductionPenalty()
         // but it only is true for our turn and not the previous turn and might result in odd values
 
-        val productionRatio = getMilitaryProductionEstimate(civInfo) / getMilitaryProductionEstimate(otherCiv)
+        val ourProduction = getMilitaryProductionEstimate(civInfo, report)
+        val theirProduction = getMilitaryProductionEstimate(otherCiv, report)
+        val productionRatio = ourProduction / theirProduction
+        if (report != null) report.addInputs(listOf(
+            "Attacker base production" to civInfo.getStatForRanking(RankingType.Production).toFloat(),
+            "Defender base production" to otherCiv.getStatForRanking(RankingType.Production).toFloat(),
+            "Production percent per starting XP" to civInfo.gameInfo.ruleset.modOptions.constants.aiMilitaryProductionPercentPerStartingXP,
+            "Attacker adjusted production" to ourProduction,
+            "Defender adjusted production" to theirProduction,
+            "Production ratio" to productionRatio,
+        ))
         val productionRatioModifier = when {
             productionRatio > 2f -> 10f
             productionRatio > 1.5f -> 5f
@@ -497,34 +605,79 @@ object MotivationToAttackAutomation {
         return scoreRatioModifier
     }
 
+    /** The same defending coalition is used by motivation and joint-war plan comparisons. */
     @Readonly
-    private fun getDefensivePactAlliesScore(otherCiv: Civilization, civInfo: Civilization, baseForce: Float, ourCombatStrength: Float): Float {
-        var theirAlliesValue = 0f
-        for (thirdCiv in otherCiv.diplomacy.values.filter { it.hasFlag(DiplomacyFlags.DefensivePact) && it.otherCiv != civInfo }) {
-            // Deterrence comes from the ally's own force, not the target's
-            val thirdCivCombatStrengthRatio = (thirdCiv.otherCiv.getStatForRanking(RankingType.Force).toFloat() + baseForce) / ourCombatStrength
-            theirAlliesValue += when {
-                thirdCivCombatStrengthRatio > 5 -> -15f
-                thirdCivCombatStrengthRatio > 2.5 -> -10f
-                thirdCivCombatStrengthRatio > 2 -> -8f
-                thirdCivCombatStrengthRatio > 1.5 -> -5f
-                thirdCivCombatStrengthRatio > .8 -> -2f
-                else -> 0f
+    fun getDefensiveCoalitionMilitaryMight(
+        attacker: Civilization,
+        defender: Civilization,
+        attackingPartner: Civilization? = null,
+    ): Float = getDefensiveMilitaryMight(attacker, defender) + getDefensivePactSupport(attacker, defender, attackingPartner)
+
+    /**
+     * Direct pact partners join automatically. Existing enemies are already accounted for elsewhere;
+     * partners of partners are not called in by the declaration code.
+     * Only nearby reinforcements count: a land approach contributes the available army, a transport
+     * approach half of it. Use the ally's transit rights, including open borders through the defender.
+     */
+    @Readonly
+    @VisibleForTesting
+    fun getDefensivePactSupport(attacker: Civilization, defender: Civilization, attackingPartner: Civilization? = null): Float {
+        var support = 0f
+        for (diplomacy in defender.diplomacy.values) {
+            if (diplomacy.diplomaticStatus != DiplomaticStatus.DefensivePact) continue
+            val ally = diplomacy.otherCiv
+            if (ally == attacker || ally == attackingPartner || ally.isDefeated() || ally.isAtWarWith(attacker)) continue
+            val availableForce = (ally.getStatForRanking(RankingType.Force) -
+                0.8f * ally.threatManager.getCombinedForceOfWarringCivs()).coerceAtLeast(0f)
+            if (availableForce == 0f) continue
+            if (hasShortSupportRoute(ally, attacker, landOnly = true)) support += availableForce
+            else if (ally.tech.unitsCanEmbark && hasShortSupportRoute(ally, attacker, landOnly = false))
+                support += availableForce * 0.5f
+        }
+        return support
+    }
+
+    /** A bounded multi-source search, rather than a full-map search for each pair of cities. */
+    @Readonly
+    private fun hasShortSupportRoute(ally: Civilization, attacker: Civilization, landOnly: Boolean): Boolean {
+        val reached = HashSet<Tile>()
+        @LocalState val frontier = ArrayDeque<Pair<Tile, Int>>()
+        for (city in ally.cities) {
+            val tile = city.getCenterTile()
+            reached.add(tile)
+            frontier.addLast(tile to 0)
+        }
+        while (frontier.isNotEmpty()) {
+            val (tile, distance) = frontier.removeFirst()
+            if (tile.isLand && tile.getOwner() == attacker) return true
+            if (distance >= MAX_SHORT_ATTACK_PATH_LENGTH - 1) continue
+            for (neighbor in tile.neighbors) {
+                if (neighbor in reached || neighbor.isImpassible()) continue
+                if (neighbor.isWater && (landOnly || !ally.tech.unitsCanEmbark)) continue
+                if (neighbor.isOcean && !ally.tech.embarkedUnitsCanEnterOcean) continue
+                val owner = neighbor.getOwner()
+                if (owner != null && owner != ally && owner != attacker
+                    && (ally.isAtWarWith(owner) || !ally.diplomacyFunctions.canPassThroughTiles(owner))) continue
+                reached.add(neighbor)
+                frontier.addLast(neighbor to distance + 1)
             }
         }
-        return theirAlliesValue
+        return false
     }
 
     @Readonly
-    private fun getCombatStrengthModifier(civInfo: Civilization, targetCiv: Civilization, ourCombatStrength: Float, theirCombatStrength: Float): Float {
+    private fun getCombatStrengthModifier(civInfo: Civilization, targetCiv: Civilization, ourCombatStrength: Float, theirCombatStrength: Float, @LocalState report: WarMotivationReport?): Float {
         var combatStrengthRatio = ourCombatStrength / theirCombatStrength
+        if (report != null) report.addInput("Unadjusted combat strength ratio" to combatStrengthRatio)
 
         // At higher difficulty levels the AI gets a unit production boost.
         // In that case while we may have more units than them, we don't nessesarily want to be more aggressive.
         // This is to reduce the amount that the AI targets players at these higher levels somewhat.
         if (civInfo.isAI() && targetCiv.isHuman()) {
             combatStrengthRatio *= civInfo.gameInfo.getDifficulty().aiUnitCostModifier.pow(1.5f)
+            if (report != null) report.addInput("Difficulty ratio multiplier" to civInfo.gameInfo.getDifficulty().aiUnitCostModifier.pow(1.5f))
         }
+        if (report != null) report.addInput("Adjusted combat strength ratio" to combatStrengthRatio)
         val combatStrengthModifier = when {
             combatStrengthRatio > 5f -> 20f
             combatStrengthRatio > 4f -> 15f
@@ -553,12 +706,9 @@ object MotivationToAttackAutomation {
     }
 
     /**
-     * Checks the routes of attack against [otherCiv] using [targetCitiesWithOurCity].
-     *
-     * The more routes of attack and shorter the path the higher a motivation will be returned.
-     * Sea attack routes are less valuable
-     *
-     * @return The motivation ranging from -30 to around +10
+     * Counts at most two non-overlapping approaches, preferring short land routes.
+     * Shared choke points and repeated routes to the same city must not multiply the bonus.
+     * One land approach is neutral; a second independent one raises the modifier to at most +3.
      */
     @Readonly
     private fun getAttackPathsModifier(
@@ -574,20 +724,21 @@ object MotivationToAttackAutomation {
                     && (owner == otherCiv || owner == null || civInfo.diplomacyFunctions.canPassThroughTiles(owner))
         }
 
-        val attackPaths: MutableList<List<Tile>> = mutableListOf()
+        val usedTiles = HashSet<Tile>()
+        var approachCount = 0
         var attackPathModifiers: Float = -3f
 
-        // For each city, use only its best route. Land routes are better than amphibious routes.
-        for (attacksGroupedByCity in accessibleAttackTargets.groupBy { it.cityToAttackFrom }) {
-            var bestAttackTarget = attacksGroupedByCity.value.firstOrNull { it.isLandPath }
-            if (bestAttackTarget == null) bestAttackTarget = attacksGroupedByCity.value.firstOrNull()
-            if (bestAttackTarget == null) continue
-
-            attackPaths.add(bestAttackTarget.path)
-            attackPathModifiers += if (bestAttackTarget.isLandPath) 3f else 1f
+        for (attackTarget in accessibleAttackTargets.sortedWith(
+            compareByDescending<AccessibleAttackTarget> { it.isLandPath }.thenBy { it.path.size }
+        )) {
+            if (attackTarget.path.any { it in usedTiles }) continue
+            usedTiles.addAll(attackTarget.path)
+            attackPathModifiers += if (attackTarget.isLandPath) 3f else 1f
+            approachCount++
+            if (approachCount == 2) break
         }
 
-        if (attackPaths.isEmpty()) {
+        if (approachCount == 0) {
             // Do an expensive BFS to find any possible attack path
             val reachableEnemyCitiesBfs = BFS(civInfo.getCapital(true)!!.getCenterTile()) { isTileCanMoveThrough(civInfo, it) }
             reachableEnemyCitiesBfs.stepToEnd()

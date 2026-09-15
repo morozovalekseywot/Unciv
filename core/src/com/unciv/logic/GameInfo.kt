@@ -23,6 +23,7 @@ import com.unciv.logic.github.Github.repoNameToFolderName
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.TileMap
 import com.unciv.logic.map.tile.Tile
+import com.unciv.logic.simulation.WarSimulationLog
 import com.unciv.models.Religion
 import com.unciv.models.metadata.GameParameters
 import com.unciv.models.ruleset.GlobalUniques
@@ -188,6 +189,10 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     var simulateMaxTurns: Int = 1000
     @Transient
     var simulateUntilWin = false
+
+    /** Enabled only by diagnostic runs; normal games allocate no war event log. */
+    @Transient
+    var warSimulationLog: WarSimulationLog? = null
 
     @Transient
     var spaceResources = HashSet<String>()
